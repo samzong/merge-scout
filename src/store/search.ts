@@ -62,24 +62,26 @@ function searchVector(
   limit: number,
 ): VecRow[] {
   try {
-    const blob = new Float32Array(embedding).buffer;
-    let sql = `
-      SELECT v.rowid as number, v.distance as distance
-      FROM issues_vec v
-      JOIN issues i ON i.number = v.rowid
-      WHERE v.embedding MATCH ?
-    `;
-    const args: Array<string | number | null | Buffer> = [Buffer.from(blob)];
+    const blob = Buffer.from(new Float32Array(embedding).buffer);
+    const knnRows = db
+      .prepare(
+        `SELECT rowid as number, distance FROM issues_vec
+         WHERE embedding MATCH ? AND k = ?
+         ORDER BY distance`,
+      )
+      .all(blob, limit * 2) as VecRow[];
 
-    if (filters.state) {
-      sql += " AND i.state = ?";
-      args.push(filters.state);
+    if (!filters.state) return knnRows.slice(0, limit);
+
+    const filtered: VecRow[] = [];
+    for (const row of knnRows) {
+      const issue = db.prepare("SELECT state FROM issues WHERE number = ?").get(row.number) as
+        | { state: string }
+        | undefined;
+      if (issue && issue.state === filters.state) filtered.push(row);
+      if (filtered.length >= limit) break;
     }
-
-    sql += ` ORDER BY v.distance LIMIT ?`;
-    args.push(limit);
-
-    return db.prepare(sql).all(...args) as VecRow[];
+    return filtered;
   } catch {
     return [];
   }
