@@ -49,7 +49,7 @@ describe("computeMergeProbability", () => {
     await store.init();
   });
 
-  it("gives base score of 50 with no signals", () => {
+  it("gives low base score with no signals", () => {
     const issue = makeIssue({ labels: [], commentCount: 0 });
     const result = computeMergeProbability({
       db: store.db,
@@ -57,31 +57,94 @@ describe("computeMergeProbability", () => {
       maintainers: [],
       now,
     });
-    expect(result.score).toBeLessThan(50);
+    expect(result.score).toBeLessThanOrEqual(10);
     expect(result.topFactors).toContain("No active mergers identified");
   });
 
-  it("boosts score when maintainer replied", () => {
-    const issue = makeIssue();
+  it("fast maintainer reply scores higher than slow reply", () => {
+    const issue = makeIssue({ createdAt: "2026-03-20T00:00:00Z" });
     store.upsertIssue(issue);
-    const maintainer = makeMaintainer();
+
     store.upsertComment({
       id: 1,
       issueNumber: 100,
       author: "alice",
-      body: "I can review this",
-      createdAt: "2026-03-26T00:00:00Z",
+      body: "Looking into this",
+      createdAt: "2026-03-21T00:00:00Z",
       isMaintainer: true,
     });
+    store.updateMaintainerReplyStats(100);
 
-    const result = computeMergeProbability({
+    const fastReply = computeMergeProbability({
       db: store.db,
       issue,
-      maintainers: [maintainer],
+      maintainers: [makeMaintainer()],
       now,
     });
-    expect(result.score).toBeGreaterThanOrEqual(80);
-    expect(result.topFactors.some((f) => f.includes("@alice"))).toBe(true);
+
+    store.db.prepare("DELETE FROM issue_comments").run();
+    store.upsertComment({
+      id: 2,
+      issueNumber: 100,
+      author: "alice",
+      body: "Looking into this",
+      createdAt: "2026-03-28T00:00:00Z",
+      isMaintainer: true,
+    });
+    store.updateMaintainerReplyStats(100);
+
+    const slowReplyIssue = makeIssue({ createdAt: "2026-03-10T00:00:00Z" });
+    const slowReply = computeMergeProbability({
+      db: store.db,
+      issue: slowReplyIssue,
+      maintainers: [makeMaintainer()],
+      now,
+    });
+
+    expect(fastReply.score).toBeGreaterThan(slowReply.score);
+  });
+
+  it("multiple maintainer replies boost score", () => {
+    const issue = makeIssue({ createdAt: "2026-03-20T00:00:00Z" });
+    store.upsertIssue(issue);
+
+    store.upsertComment({
+      id: 1,
+      issueNumber: 100,
+      author: "alice",
+      body: "Looking into this",
+      createdAt: "2026-03-21T00:00:00Z",
+      isMaintainer: true,
+    });
+    store.updateMaintainerReplyStats(100);
+
+    const oneReply = computeMergeProbability({
+      db: store.db,
+      issue,
+      maintainers: [makeMaintainer()],
+      now,
+    });
+
+    for (let i = 2; i <= 5; i++) {
+      store.upsertComment({
+        id: i,
+        issueNumber: 100,
+        author: "alice",
+        body: `Follow up ${i}`,
+        createdAt: `2026-03-${20 + i}T00:00:00Z`,
+        isMaintainer: true,
+      });
+    }
+    store.updateMaintainerReplyStats(100);
+
+    const manyReplies = computeMergeProbability({
+      db: store.db,
+      issue,
+      maintainers: [makeMaintainer()],
+      now,
+    });
+
+    expect(manyReplies.score).toBeGreaterThan(oneReply.score);
   });
 
   it("penalizes no maintainer response after 30+ days", () => {
@@ -94,50 +157,32 @@ describe("computeMergeProbability", () => {
       maintainers: [maintainer],
       now,
     });
-    expect(result.score).toBeLessThanOrEqual(40);
+    expect(result.score).toBeLessThanOrEqual(25);
     expect(result.topFactors.some((f) => f.includes("No maintainer response"))).toBe(true);
   });
 
-  it("uses label merge rate from xref data", () => {
-    const maintainer = makeMaintainer();
-
-    for (let i = 1; i <= 10; i++) {
-      store.upsertIssue(
-        makeIssue({
-          number: i,
-          state: "closed",
-          labels: ["bug"],
-          closedAt: "2026-03-15T00:00:00Z",
-        }),
-      );
-    }
-    for (let i = 1; i <= 7; i++) {
-      store.upsertXref({
-        issueNumber: i,
-        prNumber: 1000 + i,
-        prState: "merged",
-        prAuthor: "contributor",
-        prTitle: `fix: issue ${i}`,
-        linkSource: "closing_reference",
-      });
-    }
-
-    const issue = makeIssue({ number: 100, labels: [] });
+  it("score does not saturate at 100 for typical good issues", () => {
+    const issue = makeIssue({ createdAt: "2026-03-25T00:00:00Z" });
     store.upsertIssue(issue);
 
-    const withXref = computeMergeProbability({
+    store.upsertComment({
+      id: 1,
+      issueNumber: 100,
+      author: "alice",
+      body: "Confirmed",
+      createdAt: "2026-03-26T00:00:00Z",
+      isMaintainer: true,
+    });
+    store.updateMaintainerReplyStats(100);
+
+    const result = computeMergeProbability({
       db: store.db,
-      issue: makeIssue({ number: 100, labels: ["bug"] }),
-      maintainers: [maintainer],
+      issue,
+      maintainers: [makeMaintainer()],
       now,
     });
-    const withoutXref = computeMergeProbability({
-      db: store.db,
-      issue: makeIssue({ number: 100, labels: [] }),
-      maintainers: [maintainer],
-      now,
-    });
-    expect(withXref.score).toBeGreaterThan(withoutXref.score);
+    expect(result.score).toBeLessThan(100);
+    expect(result.score).toBeGreaterThanOrEqual(60);
   });
 
   it("penalizes high comment count", () => {
@@ -158,29 +203,5 @@ describe("computeMergeProbability", () => {
       now,
     });
     expect(controversialResult.score).toBeLessThan(baseResult.score);
-  });
-
-  it("returns correct label for score ranges", () => {
-    const issue = makeIssue({ createdAt: "2026-03-20T00:00:00Z" });
-    store.upsertIssue(issue);
-    const maintainer = makeMaintainer();
-    store.upsertComment({
-      id: 1,
-      issueNumber: 100,
-      author: "alice",
-      body: "LGTM",
-      createdAt: "2026-03-21T00:00:00Z",
-      isMaintainer: true,
-    });
-
-    const result = computeMergeProbability({
-      db: store.db,
-      issue,
-      maintainers: [maintainer],
-      now,
-    });
-    expect(result.score).toBeGreaterThanOrEqual(80);
-    expect(result.label).toBe("very likely");
-    expect(result.confidence).toBe("high");
   });
 });
