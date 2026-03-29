@@ -14,6 +14,7 @@ Issue Lens — local-first CLI tool that helps open source contributors find hig
 - SQLite + FTS5 + sqlite-vec (vector search)
 - node-llama-cpp (local embeddings, embeddinggemma-300m)
 - gh CLI (GitHub API access, no SDK)
+- eslint + typescript-eslint (linter)
 - vitest (test runner)
 - prettier (formatter)
 
@@ -42,7 +43,7 @@ Issue Lens — local-first CLI tool that helps open source contributors find hig
 ## Architecture
 
 - `src/cli.ts` — 10 CLI command handlers (init, sync, discover, search, show, related, xref, maintainers, status, config)
-- `src/store.ts` — SQLite schema + CRUD (7 tables + FTS5 + vec0)
+- `src/store.ts` — SQLite schema + CRUD (8 tables + FTS5 + vec0)
 - `src/github.ts` — gh CLI wrapper with retry/pagination
 - `src/store/` — scoring modules (priority, merge-probability, workability, maintainer, search)
 - `src/lib/` — utilities (sqlite loader, text processing, concurrency pool, hybrid search fusion)
