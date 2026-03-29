@@ -441,15 +441,19 @@ export class IssueLensStore {
       const linked: number[] = JSON.parse(pr.linked_issues);
       const prState = pr.state as "open" | "merged" | "closed";
       for (const issueNumber of linked) {
-        this.upsertXref({
-          issueNumber,
-          prNumber: pr.number,
-          prState,
-          prAuthor: pr.author,
-          prTitle: pr.title,
-          linkSource: "closing_reference",
-        });
-        count++;
+        try {
+          this.upsertXref({
+            issueNumber,
+            prNumber: pr.number,
+            prState,
+            prAuthor: pr.author,
+            prTitle: pr.title,
+            linkSource: "closing_reference",
+          });
+          count++;
+        } catch {
+          // FK constraint: issue number doesn't exist in issues table
+        }
       }
     }
     return count;

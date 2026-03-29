@@ -112,7 +112,17 @@ async function collectPaginated<T>(
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; ; page += 1) {
-    const pageItems = await ghApiJsonWithRetry<T[]>(pathBuilder(page));
+    let pageItems: T[];
+    try {
+      pageItems = await ghApiJsonWithRetry<T[]>(pathBuilder(page));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("422") || msg.includes("cursor based pagination")) {
+        if (label) process.stderr.write(`\n  ${label}: stopped at page ${page} (GitHub pagination limit)\n`);
+        break;
+      }
+      throw error;
+    }
     if (pageItems.length === 0) break;
     out.push(...pageItems);
     if (label) process.stderr.write(`\r  ${label}: ${out.length} fetched (page ${page})...`);
@@ -240,13 +250,14 @@ export class GhCliIssueDataSource implements IssueDataSource {
   }
 
   async listPullRequests(repo: RepoRef, since?: string): Promise<PrRecord[]> {
-    const sinceParam = since ? `&since=${since}` : "";
     const raw = await collectPaginated<RestPr>(
       (page) =>
-        `repos/${repo.owner}/${repo.name}/pulls?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc${sinceParam}`,
+        `repos/${repo.owner}/${repo.name}/pulls?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc`,
       "pulls",
     );
-    return raw.map(toPrRecord);
+    if (!since) return raw.map(toPrRecord);
+    const sinceDate = new Date(since);
+    return raw.filter((pr) => new Date(pr.created_at) > sinceDate).map(toPrRecord);
   }
 
   async searchPrsForIssue(repo: RepoRef, issueNumber: number): Promise<IssuePrXref[]> {
