@@ -322,15 +322,14 @@ async function handleSync(ctx: CommandContext): Promise<number> {
   const commentsSynced = await syncComments(ctx, maintainers, full);
   const embeddingsComputed = await syncEmbeddings(store);
 
+  const now = new Date().toISOString();
   if (issues.length > 0) {
     store.setMeta("issue_sync_watermark", issues[issues.length - 1]!.updatedAt);
   }
-  if (prs.length > 0) {
-    store.setMeta("pr_sync_watermark", prs[prs.length - 1]!.createdAt);
-  }
-  store.setMeta("comment_sync_watermark", new Date().toISOString());
-  store.setMeta("xref_sync_watermark", new Date().toISOString());
-  store.setMeta("last_sync_at", new Date().toISOString());
+  store.setMeta("pr_sync_watermark", now);
+  store.setMeta("comment_sync_watermark", now);
+  store.setMeta("xref_sync_watermark", now);
+  store.setMeta("last_sync_at", now);
 
   const totalXrefs = xrefResult.fromPrLinks + xrefResult.fromSearch;
   const summary: SyncSummary = {

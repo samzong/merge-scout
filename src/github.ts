@@ -165,6 +165,7 @@ type RestPr = {
   user: { login: string } | null;
   merged_by: { login: string } | null;
   created_at: string;
+  updated_at: string;
   labels: Array<{ name: string }>;
   body: string | null;
 };
@@ -251,18 +252,46 @@ export class GhCliIssueDataSource implements IssueDataSource {
   }
 
   async listPullRequests(repo: RepoRef, since?: string): Promise<PrRecord[]> {
-    const raw = await collectPaginated<RestPr>(
-      (page) =>
-        `repos/${repo.owner}/${repo.name}/pulls?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc`,
-    );
     if (!since) {
+      const raw = await collectPaginated<RestPr>(
+        (page) =>
+          `repos/${repo.owner}/${repo.name}/pulls?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc`,
+      );
       process.stderr.write(`  ${raw.length} PRs\n`);
       return raw.map(toPrRecord);
     }
+
     const sinceDate = new Date(since);
-    const filtered = raw.filter((pr) => new Date(pr.created_at) > sinceDate);
-    process.stderr.write(`  ${filtered.length} new PRs (of ${raw.length} fetched)\n`);
-    return filtered.map(toPrRecord);
+    const out: RestPr[] = [];
+    for (let page = 1; ; page += 1) {
+      let pageItems: RestPr[];
+      try {
+        pageItems = await ghApiJsonWithRetry<RestPr[]>(
+          `repos/${repo.owner}/${repo.name}/pulls?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc`,
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg.includes("422") || msg.includes("cursor based pagination")) break;
+        throw error;
+      }
+      if (pageItems.length === 0) break;
+
+      let staleCount = 0;
+      for (const pr of pageItems) {
+        if (new Date(pr.updated_at) > sinceDate) {
+          out.push(pr);
+        } else {
+          staleCount++;
+        }
+      }
+
+      process.stderr.write(`\r  pulls: ${out.length} new (page ${page})...`);
+      if (staleCount === pageItems.length) break;
+      if (pageItems.length < PAGE_SIZE) break;
+    }
+
+    process.stderr.write(`\r  ${out.length} new PRs\n`);
+    return out.map(toPrRecord);
   }
 
   async searchPrsForIssue(repo: RepoRef, issueNumber: number): Promise<IssuePrXref[]> {
