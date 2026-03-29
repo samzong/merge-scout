@@ -4,13 +4,15 @@ Local-first CLI that helps open source contributors find the **best issues to wo
 
 Syncs GitHub data into SQLite, scores every open issue, and provides hybrid semantic search (FTS5 + vector). Designed as an AI agent tool — the real UI is your AI assistant.
 
-## Install AI Skill (one line)
+## Install AI Skill
 
-```
-Clone https://github.com/samzong/issue-lens and run: ln -s /path/to/issue-lens/skill ~/.agents/skills/issue-lens
+```bash
+git clone https://github.com/samzong/issue-lens.git
+cd issue-lens && pnpm install
+ln -s "$(pwd)/skill" ~/.agents/skills/issue-lens
 ```
 
-Then just tell your AI: **"帮我找 llm-d/llm-d 最值得贡献的 issue"** — it knows what to do.
+Then tell your AI: **"Find me the best issue to contribute to in this project"** — it handles the rest.
 
 ## Prerequisites
 
@@ -21,15 +23,14 @@ Then just tell your AI: **"帮我找 llm-d/llm-d 最值得贡献的 issue"** —
 ## Quick Start
 
 ```bash
-pnpm install
-pnpm run issue-lens -- init --repo llm-d/llm-d
-pnpm run issue-lens -- sync --repo llm-d/llm-d --full
-pnpm run issue-lens -- discover --repo llm-d/llm-d --limit 10
+pnpm run issue-lens -- init --repo <owner/repo>
+pnpm run issue-lens -- sync --repo <owner/repo> --full
+pnpm run issue-lens -- discover --repo <owner/repo> --limit 10
 ```
 
 ## How It Works
 
-```
+```text
 finalScore = contributability × mergeProbability / 100
 ```
 
@@ -47,56 +48,53 @@ finalScore = contributability × mergeProbability / 100
 
 ## Usage Scenarios
 
-### 1. "今天贡献什么" — Daily Recommendation
+### 1. Daily Recommendation
 
-Tell your AI:
+> "What issues should I work on today?"
 
-> "帮我看看 llm-d 今天有什么值得做的 issue"
+AI runs `sync` → `discover`, then explains why each issue is recommended: which signals drove the score, whether it's claimable, and what risks exist.
 
-AI runs `sync` → `discover`, then explains:
+### 2. Semantic Search
 
-> **推荐 #323** — "Multiple model deployment demo"
-> Score 53（最高分），`good first issue` + `help wanted`，维护者 2 天内回复了，merge probability 71%，没人认领，可以直接开始。
+> "Find issues related to GPU memory management"
 
-### 2. "我对 X 方向感兴趣" — Semantic Search
+AI runs `search "GPU memory management"`. Returns results matched by meaning, not just keywords — finds issues about CUDA OOM, memory leaks, and allocation bugs even if those exact words aren't in the title.
 
-> "搜一下跟 GPU memory 和 CUDA OOM 相关的 issue"
+### 3. Issue Assessment
 
-AI runs `search "GPU memory CUDA OOM"`, returns vector-matched results even when titles don't contain those keywords. Example: finds #787 "CUDA OOM on sampler warmup" via semantic similarity.
+> "Is issue #759 worth working on?"
 
-### 3. "#759 值得做吗" — Issue Assessment
+AI runs `show 759` + `xref 759`, gives a clear verdict:
 
-> "llm-d 的 759 这个 issue 值得做吗"
+- **Go**: workability=ready, merge probability ≥ 60, maintainer recently active
+- **Maybe**: some risk factors but could work
+- **Skip**: claimed, blocked, stale, or low merge probability
 
-AI runs `show 759` + `xref 759`, gives verdict:
+### 4. Maintainer Profiles
 
-> **Maybe** — merge probability 74%，维护者回复了。但这是 RDMA/H200 环境的并发 bug，scope 比较大。xref 显示目前没人提 PR。
+> "Who maintains this project?"
 
-### 4. "谁是维护者" — Maintainer Profiles
+AI runs `maintainers`, shows who has merge power, how fast they respond, and how active they are in the last 90 days.
 
-> "kueue 的主要维护者是谁"
+### 5. End-to-End Contribution
 
-AI runs `maintainers`, shows: who has merge power, how fast they respond, which modules they own.
-
-### 5. "帮我找一个 issue 直接处理提 PR" — End-to-End Contribution
-
-> "帮我在 llm-d 找一个最容易的 issue，分析一下然后直接帮我处理提 PR"
+> "Find the easiest issue and submit a PR for it"
 
 AI runs the full pipeline:
 
 1. `discover --limit 5` → pick the highest-scored `ready` issue
-2. `show <N>` → read the issue detail, understand the requirement
+2. `show <N>` → understand the requirement
 3. `xref <N>` → confirm no one else is working on it
-4. Clone the repo, read the relevant code, implement the fix
+4. Read the relevant code, implement the fix
 5. Commit, push, create PR referencing the issue
 
-This is the ultimate workflow — from discovery to PR in one conversation.
+From discovery to PR in one conversation.
 
-### 6. "初始化一个新仓库" — New Repo Setup
+### 6. New Repo Setup
 
-> "帮我初始化 kubernetes-sigs/kueue，看看有什么可以做的"
+> "Initialize this repo and show me what to work on"
 
-AI runs `init` → `sync --full` → `discover`, gives you the first batch of recommendations.
+AI runs `init` → `sync --full` → `discover`, gives the first batch of recommendations.
 
 ## Commands
 
@@ -114,6 +112,17 @@ AI runs `init` → `sync --full` → `discover`, gives you the first batch of re
 | `config --repo <R>`               | View/modify contributor module focus           |
 
 All commands support `--json` for structured output.
+
+## AI Agent Skill
+
+The `skill/SKILL.md` file defines how AI agents should use this tool. It includes:
+
+- Intent routing (daily recommend, search, assessment, maintainers)
+- Score interpretation tables
+- Decision framework (Go / Maybe / Skip)
+- Workflow sequences for each scenario
+
+Install: `ln -s /path/to/issue-lens/skill ~/.agents/skills/issue-lens`
 
 ## Tech Stack
 

@@ -52,5 +52,5 @@ Issue Lens — local-first CLI tool that helps open source contributors find hig
 ## Design References
 
 - @DESIGN.md — full architecture, scoring formulas, data model, competitive analysis
-- @SKILL.md — AI agent operation manual with CLI workflows
+- @skill/SKILL.md — AI agent skill definition with routing, workflows, score interpretation
 - @HANDOFF.md — current status and next steps
