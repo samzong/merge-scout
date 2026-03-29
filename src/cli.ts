@@ -5,9 +5,8 @@ import { inferMaintainers } from "./store/maintainer.js";
 import { buildDiscoverResults } from "./store/priority.js";
 import { resolveWorkability } from "./store/workability.js";
 import { computeMergeProbability } from "./store/merge-probability.js";
-import { buildEmbeddingDocument } from "./lib/text.js";
-import type { LocalEmbeddingProvider } from "./embedding.js";
-import type { RepoRef, SyncSummary } from "./types.js";
+import { runTasksWithConcurrency } from "./lib/concurrency.js";
+import type { RepoRef, SyncSummary, MaintainerProfile } from "./types.js";
 
 type Command =
   | "init"
@@ -103,11 +102,26 @@ function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i]!;
-    if (arg === "--repo") { args.repo = rest[++i] ?? ""; continue; }
-    if (arg === "--limit") { args.limit = Number(rest[++i] ?? "20"); continue; }
-    if (arg === "--db") { args.dbPath = rest[++i] ?? ""; continue; }
-    if (arg === "--full") { args.full = true; continue; }
-    if (arg === "--json") { args.json = true; continue; }
+    if (arg === "--repo") {
+      args.repo = rest[++i] ?? "";
+      continue;
+    }
+    if (arg === "--limit") {
+      args.limit = Number(rest[++i] ?? "20");
+      continue;
+    }
+    if (arg === "--db") {
+      args.dbPath = rest[++i] ?? "";
+      continue;
+    }
+    if (arg === "--full") {
+      args.full = true;
+      continue;
+    }
+    if (arg === "--json") {
+      args.json = true;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -149,21 +163,109 @@ function output(args: ParsedArgs, data: unknown, humanText?: string): void {
 async function handleInit(ctx: CommandContext): Promise<number> {
   await ctx.store.init();
   ctx.store.setMeta("repo", ctx.args.repo);
-  output(ctx.args, { ok: true, repo: ctx.args.repo, dbPath: ctx.store.dbPath }, `Initialized issue-lens for ${ctx.args.repo}\nDB: ${ctx.store.dbPath}`);
+  output(
+    ctx.args,
+    { ok: true, repo: ctx.args.repo, dbPath: ctx.store.dbPath },
+    `Initialized issue-lens for ${ctx.args.repo}\nDB: ${ctx.store.dbPath}`,
+  );
   return 0;
+}
+
+const COMMENT_CONCURRENCY = 5;
+const SEARCH_API_INTERVAL_MS = 2100;
+
+async function syncComments(
+  ctx: CommandContext,
+  maintainers: MaintainerProfile[],
+  full: boolean,
+): Promise<number> {
+  const { store, source } = ctx;
+  const since = full ? undefined : (store.getMeta("comment_sync_watermark") ?? undefined);
+  const issuesWithComments = store.getOpenIssuesWithComments(since);
+  if (issuesWithComments.length === 0) return 0;
+
+  process.stderr.write(`Syncing comments for ${issuesWithComments.length} open issues...\n`);
+  const maintainerLogins = new Set(maintainers.map((m) => m.login));
+  let synced = 0;
+  let issuesDone = 0;
+
+  const tasks = issuesWithComments.map((issue) => async () => {
+    const comments = await source.getIssueComments(ctx.repo, issue.number);
+    for (const c of comments) {
+      c.isMaintainer = maintainerLogins.has(c.author);
+      store.upsertComment(c);
+    }
+    store.updateMaintainerReplyStats(issue.number);
+    synced += comments.length;
+    issuesDone++;
+    if (issuesDone % 100 === 0) {
+      process.stderr.write(
+        `  ${issuesDone}/${issuesWithComments.length} issues, ${synced} comments...\n`,
+      );
+    }
+  });
+
+  await runTasksWithConcurrency({
+    tasks,
+    limit: COMMENT_CONCURRENCY,
+    onTaskError: (err, idx) => {
+      process.stderr.write(`  Warning: comments for #${issuesWithComments[idx]!.number}: ${err}\n`);
+    },
+  });
+
+  return synced;
+}
+
+async function syncXrefs(
+  ctx: CommandContext,
+  full: boolean,
+): Promise<{ fromPrLinks: number; fromSearch: number }> {
+  const { store, source } = ctx;
+
+  const fromPrLinks = store.buildXrefsFromPrLinks();
+
+  const since = full ? undefined : (store.getMeta("xref_sync_watermark") ?? undefined);
+  const openIssues = store.getOpenIssues(since);
+  if (openIssues.length === 0) return { fromPrLinks, fromSearch: 0 };
+
+  process.stderr.write(
+    `Searching cross-references for ${openIssues.length} open issues (search API, ~30 req/min)...\n`,
+  );
+  let fromSearch = 0;
+  for (let i = 0; i < openIssues.length; i++) {
+    const issue = openIssues[i]!;
+    try {
+      const xrefs = await source.searchPrsForIssue(ctx.repo, issue.number);
+      for (const x of xrefs) store.upsertXref(x);
+      fromSearch += xrefs.length;
+    } catch (err) {
+      process.stderr.write(`  Warning: xref search for #${issue.number}: ${err}\n`);
+    }
+    if ((i + 1) % 50 === 0) {
+      process.stderr.write(
+        `  ${i + 1}/${openIssues.length} issues searched, ${fromSearch} xrefs found...\n`,
+      );
+    }
+    if (i < openIssues.length - 1) {
+      await new Promise((r) => setTimeout(r, SEARCH_API_INTERVAL_MS));
+    }
+  }
+
+  return { fromPrLinks, fromSearch };
 }
 
 async function handleSync(ctx: CommandContext): Promise<number> {
   await ctx.store.init();
   const { store, source, args } = ctx;
-  const watermark = args.full ? undefined : store.getMeta("issue_sync_watermark") ?? undefined;
+  const full = !!args.full;
+  const watermark = full ? undefined : (store.getMeta("issue_sync_watermark") ?? undefined);
 
   process.stderr.write("Syncing issues...\n");
   const issues = await source.listAllIssues(ctx.repo, watermark);
   for (const issue of issues) store.upsertIssue(issue);
 
   process.stderr.write("Syncing PRs...\n");
-  const prWatermark = args.full ? undefined : store.getMeta("pr_sync_watermark") ?? undefined;
+  const prWatermark = full ? undefined : (store.getMeta("pr_sync_watermark") ?? undefined);
   const prs = await source.listPullRequests(ctx.repo, prWatermark);
   for (const pr of prs) store.upsertPr(pr);
 
@@ -171,23 +273,36 @@ async function handleSync(ctx: CommandContext): Promise<number> {
   const maintainers = inferMaintainers(store.db);
   for (const m of maintainers) store.upsertMaintainer(m);
 
+  const xrefResult = await syncXrefs(ctx, full);
+  const commentsSynced = await syncComments(ctx, maintainers, full);
+
   if (issues.length > 0) {
     store.setMeta("issue_sync_watermark", issues[issues.length - 1]!.updatedAt);
   }
   if (prs.length > 0) {
     store.setMeta("pr_sync_watermark", prs[prs.length - 1]!.createdAt);
   }
+  store.setMeta("comment_sync_watermark", new Date().toISOString());
+  store.setMeta("xref_sync_watermark", new Date().toISOString());
   store.setMeta("last_sync_at", new Date().toISOString());
 
+  const totalXrefs = xrefResult.fromPrLinks + xrefResult.fromSearch;
   const summary: SyncSummary = {
     issues: { added: issues.length, updated: 0 },
-    comments: { synced: 0 },
+    comments: { synced: commentsSynced },
     prs: { added: prs.length, updated: 0 },
     maintainers: { identified: maintainers.length },
+    xrefs: totalXrefs,
     embeddings: { computed: 0 },
   };
 
-  output(args, summary, `Synced ${issues.length} issues, ${prs.length} PRs, ${maintainers.length} maintainers identified.`);
+  const lines = [
+    `Synced ${issues.length} issues, ${prs.length} PRs.`,
+    `${maintainers.length} maintainers identified.`,
+    `${xrefResult.fromPrLinks} xrefs from PR links, ${xrefResult.fromSearch} from search API.`,
+    `${commentsSynced} comments synced.`,
+  ];
+  output(args, summary, lines.join("\n"));
   return 0;
 }
 
@@ -197,7 +312,9 @@ async function handleDiscover(ctx: CommandContext): Promise<number> {
   const issues = store.getOpenIssues();
   const maintainers = store.getMaintainers();
 
-  const modulesRows = store.db.prepare("SELECT pattern FROM contributor_modules").all() as Array<{ pattern: string }>;
+  const modulesRows = store.db.prepare("SELECT pattern FROM contributor_modules").all() as Array<{
+    pattern: string;
+  }>;
   const modules = modulesRows.map((r) => r.pattern);
 
   const results = buildDiscoverResults({
@@ -232,7 +349,9 @@ async function handleDiscover(ctx: CommandContext): Promise<number> {
     for (const r of results) {
       const mp = r.mergeProbability.label;
       console.log(`  #${r.issue.number} [${r.workability.status}] ${r.issue.title}`);
-      console.log(`    score: ${Math.round(r.finalScore)} | merge: ${mp} (${r.mergeProbability.score}) | labels: ${r.issue.labels.join(", ") || "none"}`);
+      console.log(
+        `    score: ${Math.round(r.finalScore)} | merge: ${mp} (${r.mergeProbability.score}) | labels: ${r.issue.labels.join(", ") || "none"}`,
+      );
     }
   }
   return 0;
@@ -305,9 +424,7 @@ async function handleShow(ctx: CommandContext): Promise<number> {
     workability,
     mergeProbability,
     relatedPRs: xrefs,
-    maintainerActivity: maintainers.filter(
-      (m) => m.role === "merger" || m.role === "owner",
-    ),
+    maintainerActivity: maintainers.filter((m) => m.role === "merger" || m.role === "owner"),
   };
   output(args, data, formatIssueDetail(data));
   return 0;
@@ -336,6 +453,8 @@ async function handleStatus(ctx: CommandContext): Promise<number> {
     dbPath: store.dbPath,
     issueCount: store.countIssues(),
     prCount: store.countPrs(),
+    commentCount: store.countComments(),
+    xrefCount: store.countXrefs(),
     maintainerCount: store.getMaintainers().length,
     vectorAvailable: store.vectorAvailable,
     lastSyncAt: store.getMeta("last_sync_at"),
@@ -350,15 +469,23 @@ async function handleConfig(ctx: CommandContext): Promise<number> {
   const rows = ctx.store.db
     .prepare("SELECT pattern, label FROM contributor_modules")
     .all() as Array<{ pattern: string; label: string | null }>;
-  output(ctx.args, { modules: rows }, rows.length > 0
-    ? `Contributor modules:\n${rows.map((r) => `  ${r.pattern}${r.label ? ` (${r.label})` : ""}`).join("\n")}`
-    : "No contributor modules configured. Use: issue-lens config --repo <repo> add <pattern>");
+  output(
+    ctx.args,
+    { modules: rows },
+    rows.length > 0
+      ? `Contributor modules:\n${rows.map((r) => `  ${r.pattern}${r.label ? ` (${r.label})` : ""}`).join("\n")}`
+      : "No contributor modules configured. Use: issue-lens config --repo <repo> add <pattern>",
+  );
   return 0;
 }
 
 async function handleRelated(ctx: CommandContext): Promise<number> {
   await ctx.store.init();
-  output(ctx.args, { issueNumber: ctx.args.issueNumber, related: [] }, "Related issues (vector search required — run sync with embeddings first)");
+  output(
+    ctx.args,
+    { issueNumber: ctx.args.issueNumber, related: [] },
+    "Related issues (vector search required — run sync with embeddings first)",
+  );
   return 0;
 }
 
@@ -393,7 +520,15 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
 }
 
 function formatIssueDetail(data: Record<string, unknown>): string {
-  const issue = data as unknown as { number: number; title: string; state: string; labels: string[]; url: string; workability: { status: string; reason: string }; mergeProbability: { score: number; label: string; topFactors: string[] } };
+  const issue = data as unknown as {
+    number: number;
+    title: string;
+    state: string;
+    labels: string[];
+    url: string;
+    workability: { status: string; reason: string };
+    mergeProbability: { score: number; label: string; topFactors: string[] };
+  };
   return [
     `#${issue.number} ${issue.title}`,
     `State: ${issue.state} | Workability: ${issue.workability.status}`,

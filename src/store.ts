@@ -10,7 +10,6 @@ import type {
   PrRecord,
   IssuePrXref,
   MaintainerProfile,
-  RepoRef,
 } from "./types.js";
 
 export function defaultDbPath(repo: string): string {
@@ -179,7 +178,9 @@ export class IssueLensStore {
 
   setMeta(key: string, value: string): void {
     this.db
-      .prepare("INSERT INTO repo_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+      .prepare(
+        "INSERT INTO repo_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+      )
       .run(key, value, value);
   }
 
@@ -195,9 +196,18 @@ export class IssueLensStore {
            url=excluded.url, comment_count=excluded.comment_count`,
       )
       .run(
-        issue.number, issue.title, issue.body, issue.state,
-        issue.author, issue.assignee, JSON.stringify(issue.labels),
-        issue.createdAt, issue.updatedAt, issue.closedAt, issue.url, issue.commentCount,
+        issue.number,
+        issue.title,
+        issue.body,
+        issue.state,
+        issue.author,
+        issue.assignee,
+        JSON.stringify(issue.labels),
+        issue.createdAt,
+        issue.updatedAt,
+        issue.closedAt,
+        issue.url,
+        issue.commentCount,
       );
   }
 
@@ -212,9 +222,15 @@ export class IssueLensStore {
            labels=excluded.labels, linked_issues=excluded.linked_issues`,
       )
       .run(
-        pr.number, pr.title, pr.state, pr.author,
-        pr.mergedBy, pr.mergedAt, pr.createdAt,
-        JSON.stringify(pr.labels), JSON.stringify(pr.linkedIssues),
+        pr.number,
+        pr.title,
+        pr.state,
+        pr.author,
+        pr.mergedBy,
+        pr.mergedAt,
+        pr.createdAt,
+        JSON.stringify(pr.labels),
+        JSON.stringify(pr.linkedIssues),
       );
   }
 
@@ -226,7 +242,14 @@ export class IssueLensStore {
          ON CONFLICT(id) DO UPDATE SET
            body=excluded.body, is_maintainer=excluded.is_maintainer`,
       )
-      .run(comment.id, comment.issueNumber, comment.author, comment.body, comment.createdAt, comment.isMaintainer ? 1 : 0);
+      .run(
+        comment.id,
+        comment.issueNumber,
+        comment.author,
+        comment.body,
+        comment.createdAt,
+        comment.isMaintainer ? 1 : 0,
+      );
   }
 
   upsertXref(xref: IssuePrXref): void {
@@ -238,7 +261,14 @@ export class IssueLensStore {
            pr_state=excluded.pr_state, pr_author=excluded.pr_author,
            pr_title=excluded.pr_title, link_source=excluded.link_source`,
       )
-      .run(xref.issueNumber, xref.prNumber, xref.prState, xref.prAuthor, xref.prTitle, xref.linkSource);
+      .run(
+        xref.issueNumber,
+        xref.prNumber,
+        xref.prState,
+        xref.prAuthor,
+        xref.prTitle,
+        xref.linkSource,
+      );
   }
 
   upsertMaintainer(m: MaintainerProfile): void {
@@ -251,14 +281,66 @@ export class IssueLensStore {
            issue_reply_count_90d=excluded.issue_reply_count_90d, avg_response_days=excluded.avg_response_days,
            last_active_at=excluded.last_active_at`,
       )
-      .run(m.login, m.role, JSON.stringify(m.modules), m.mergeCount90d, m.issueReplyCount90d, m.avgResponseDays, m.lastActiveAt);
+      .run(
+        m.login,
+        m.role,
+        JSON.stringify(m.modules),
+        m.mergeCount90d,
+        m.issueReplyCount90d,
+        m.avgResponseDays,
+        m.lastActiveAt,
+      );
   }
 
-  getOpenIssues(): IssueRecord[] {
+  getOpenIssues(since?: string): IssueRecord[] {
+    if (since) {
+      const rows = this.db
+        .prepare(
+          "SELECT * FROM issues WHERE state = 'open' AND updated_at > ? ORDER BY updated_at DESC",
+        )
+        .all(since) as Array<Record<string, unknown>>;
+      return rows.map(rowToIssue);
+    }
     const rows = this.db
       .prepare("SELECT * FROM issues WHERE state = 'open' ORDER BY updated_at DESC")
       .all() as Array<Record<string, unknown>>;
     return rows.map(rowToIssue);
+  }
+
+  getOpenIssuesWithComments(since?: string): IssueRecord[] {
+    if (since) {
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM issues WHERE state = 'open' AND comment_count > 0
+           AND updated_at > ? ORDER BY updated_at DESC`,
+        )
+        .all(since) as Array<Record<string, unknown>>;
+      return rows.map(rowToIssue);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM issues WHERE state = 'open' AND comment_count > 0
+         ORDER BY updated_at DESC`,
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(rowToIssue);
+  }
+
+  updateMaintainerReplyStats(issueNumber: number): void {
+    this.db
+      .prepare(
+        `UPDATE issues SET
+           maintainer_reply_count = (
+             SELECT COUNT(*) FROM issue_comments
+             WHERE issue_number = ? AND is_maintainer = 1
+           ),
+           first_maintainer_reply_at = (
+             SELECT MIN(created_at) FROM issue_comments
+             WHERE issue_number = ? AND is_maintainer = 1
+           )
+         WHERE number = ?`,
+      )
+      .run(issueNumber, issueNumber, issueNumber);
   }
 
   getIssue(number: number): IssueRecord | null {
@@ -269,7 +351,9 @@ export class IssueLensStore {
   }
 
   getMaintainers(): MaintainerProfile[] {
-    const rows = this.db.prepare("SELECT * FROM maintainers ORDER BY merge_count_90d DESC").all() as Array<Record<string, unknown>>;
+    const rows = this.db
+      .prepare("SELECT * FROM maintainers ORDER BY merge_count_90d DESC")
+      .all() as Array<Record<string, unknown>>;
     return rows.map(rowToMaintainer);
   }
 
@@ -286,8 +370,56 @@ export class IssueLensStore {
   }
 
   countPrs(): number {
-    const row = this.db.prepare("SELECT COUNT(*) as count FROM pull_requests").get() as { count: number };
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM pull_requests").get() as {
+      count: number;
+    };
     return row.count;
+  }
+
+  countComments(): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM issue_comments").get() as {
+      count: number;
+    };
+    return row.count;
+  }
+
+  countXrefs(): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM issue_pr_xref").get() as {
+      count: number;
+    };
+    return row.count;
+  }
+
+  buildXrefsFromPrLinks(): number {
+    const prs = this.db
+      .prepare(
+        "SELECT number, title, state, author, linked_issues FROM pull_requests WHERE linked_issues != '[]'",
+      )
+      .all() as Array<{
+      number: number;
+      title: string;
+      state: string;
+      author: string | null;
+      linked_issues: string;
+    }>;
+
+    let count = 0;
+    for (const pr of prs) {
+      const linked: number[] = JSON.parse(pr.linked_issues);
+      const prState = pr.state as "open" | "merged" | "closed";
+      for (const issueNumber of linked) {
+        this.upsertXref({
+          issueNumber,
+          prNumber: pr.number,
+          prState,
+          prAuthor: pr.author,
+          prTitle: pr.title,
+          linkSource: "closing_reference",
+        });
+        count++;
+      }
+    }
+    return count;
   }
 }
 

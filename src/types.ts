@@ -120,6 +120,7 @@ export type SyncSummary = {
   comments: { synced: number };
   prs: { added: number; updated: number };
   maintainers: { identified: number };
+  xrefs: number;
   embeddings: { computed: number };
 };
 
