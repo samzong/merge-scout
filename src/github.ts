@@ -229,9 +229,10 @@ export class GhCliIssueDataSource implements IssueDataSource {
     const raw = await collectPaginated<RestIssue>(
       (page) =>
         `repos/${repo.owner}/${repo.name}/issues?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc${sinceParam}`,
-      "issues",
     );
-    return raw.filter((item) => !item.pull_request).map(toIssueRecord);
+    const issues = raw.filter((item) => !item.pull_request);
+    process.stderr.write(`  ${issues.length} issues (${raw.length - issues.length} PRs filtered out)\n`);
+    return issues.map(toIssueRecord);
   }
 
   async getIssueComments(repo: RepoRef, issueNumber: number): Promise<IssueComment[]> {
@@ -253,11 +254,15 @@ export class GhCliIssueDataSource implements IssueDataSource {
     const raw = await collectPaginated<RestPr>(
       (page) =>
         `repos/${repo.owner}/${repo.name}/pulls?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc`,
-      "pulls",
     );
-    if (!since) return raw.map(toPrRecord);
+    if (!since) {
+      process.stderr.write(`  ${raw.length} PRs\n`);
+      return raw.map(toPrRecord);
+    }
     const sinceDate = new Date(since);
-    return raw.filter((pr) => new Date(pr.created_at) > sinceDate).map(toPrRecord);
+    const filtered = raw.filter((pr) => new Date(pr.created_at) > sinceDate);
+    process.stderr.write(`  ${filtered.length} new PRs (of ${raw.length} fetched)\n`);
+    return filtered.map(toPrRecord);
   }
 
   async searchPrsForIssue(repo: RepoRef, issueNumber: number): Promise<IssuePrXref[]> {
