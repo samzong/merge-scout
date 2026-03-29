@@ -1,8 +1,8 @@
 # Handoff — Issue Lens
 
 **Date**: 2026-03-30
-**Branch**: main (10 commits)
-**Status**: MVP usable. Scoring, hybrid search, embedding pipeline validated on real repos. Ready for daily use.
+**Branch**: main (17 commits, pushed to origin)
+**Status**: MVP shipped. Scoring, hybrid search, embedding pipeline validated. README, AI skill, and docs complete. Ready for daily use.
 
 ## Goal
 
@@ -46,6 +46,9 @@ CLI commands (discover, search, show, related, xref, maintainers, status, config
   - "GPU memory CUDA OOM" → finds #787 via vector despite no keyword overlap
 - **Embedding pipeline**: node-llama-cpp, embeddinggemma-300m (~300MB, auto-downloads)
 - **Pagination resilience**: graceful stop on HTTP 422
+- **AI agent skill**: `skill/SKILL.md` with routing, workflows, score interpretation. Install via symlink
+- **Repo detection**: prefers `upstream` remote over `origin` (fork-aware)
+- **README**: LaTeX scoring formulas, 6 usage scenarios, one-line skill install
 - **32 tests passing**, verify gate green
 
 ## Validated On
@@ -90,15 +93,15 @@ CLI commands (discover, search, show, related, xref, maintainers, status, config
 | ------------------------------------------------------ | ------ | --------------------------------------------------- |
 | `config add` subcommand                                | small  | enables moduleAffinity personalization              |
 | `related` command                                      | small  | KNN query on issue's own embedding                  |
-| SKILL.md daily workflow                                | small  | "what should I contribute today" one-shot           |
 | Cursor-based pagination                                | medium | fixes issues API 422 on large repos                 |
 | Rate limit pre-check in sync                           | small  | early stop instead of failing mid-sync              |
 | Issues API still returns all when `since` matches many | medium | incremental issues sync still slow for active repos |
 
 ## Context Files
 
+- `README.md` — project intro, install, usage scenarios
 - `DESIGN.md` — full architecture, scoring formulas, data model
-- `SKILL.md` — AI agent operation manual
+- `skill/SKILL.md` — AI agent skill (routing, workflows, score interpretation)
 - `src/cli.ts` — 10 CLI commands + sync pipeline
 - `src/store.ts` — SQLite schema + CRUD + vector ops
 - `src/store/merge-probability.ts` — scoring (continuous signals)
