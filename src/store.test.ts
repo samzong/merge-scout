@@ -170,6 +170,43 @@ describe("IssueLensStore", () => {
     });
   });
 
+  describe("embeddings", () => {
+    it("upserts and queries vector embeddings", async () => {
+      await store.init();
+      if (!store.vectorAvailable) return;
+
+      store.upsertIssue(makeIssue({ number: 1 }));
+      store.upsertIssue(makeIssue({ number: 2 }));
+
+      const dim = 768;
+      const vec1 = Array.from({ length: dim }, (_, i) => (i === 0 ? 1.0 : 0.0));
+      const vec2 = Array.from({ length: dim }, (_, i) => (i === 1 ? 1.0 : 0.0));
+
+      store.upsertIssueEmbedding(1, vec1);
+      store.upsertIssueEmbedding(2, vec2);
+
+      expect(store.countEmbeddings()).toBe(2);
+
+      const missing = store.getIssueNumbersMissingEmbeddings();
+      expect(missing).toHaveLength(0);
+    });
+
+    it("getIssueNumbersMissingEmbeddings returns issues without vectors", async () => {
+      await store.init();
+      if (!store.vectorAvailable) return;
+
+      store.upsertIssue(makeIssue({ number: 1 }));
+      store.upsertIssue(makeIssue({ number: 2 }));
+      store.upsertIssueEmbedding(
+        1,
+        Array.from({ length: 768 }, () => 0),
+      );
+
+      const missing = store.getIssueNumbersMissingEmbeddings();
+      expect(missing).toEqual([2]);
+    });
+  });
+
   describe("counts", () => {
     it("countComments returns comment count", () => {
       store.upsertIssue(makeIssue({ number: 1 }));

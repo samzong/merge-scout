@@ -6,6 +6,7 @@ import { buildDiscoverResults } from "./store/priority.js";
 import { resolveWorkability } from "./store/workability.js";
 import { computeMergeProbability } from "./store/merge-probability.js";
 import { runTasksWithConcurrency } from "./lib/concurrency.js";
+import { buildEmbeddingDocument } from "./lib/text.js";
 import type { RepoRef, SyncSummary, MaintainerProfile } from "./types.js";
 
 type Command =
@@ -254,6 +255,50 @@ async function syncXrefs(
   return { fromPrLinks, fromSearch };
 }
 
+const EMBEDDING_BATCH_SIZE = 32;
+
+async function syncEmbeddings(store: IssueLensStore): Promise<number> {
+  if (!store.vectorAvailable) return 0;
+
+  const missing = store.getIssueNumbersMissingEmbeddings();
+  if (missing.length === 0) return 0;
+
+  process.stderr.write(`Computing embeddings for ${missing.length} issues (loading model...)...\n`);
+  let provider;
+  try {
+    const { createLocalEmbeddingProvider } = await import("./embedding.js");
+    provider = await createLocalEmbeddingProvider();
+  } catch (err) {
+    process.stderr.write(`  Embedding model unavailable, skipping: ${err}\n`);
+    return 0;
+  }
+
+  let computed = 0;
+  for (let i = 0; i < missing.length; i += EMBEDDING_BATCH_SIZE) {
+    const batch = missing.slice(i, i + EMBEDDING_BATCH_SIZE);
+    const docs: string[] = [];
+    for (const num of batch) {
+      const issue = store.getIssue(num);
+      if (!issue) continue;
+      docs.push(buildEmbeddingDocument(issue.title, issue.body));
+    }
+
+    const embeddings = await provider.embedBatch(docs);
+    for (let j = 0; j < batch.length; j++) {
+      if (embeddings[j]) {
+        store.upsertIssueEmbedding(batch[j]!, embeddings[j]!);
+        computed++;
+      }
+    }
+
+    if ((i + EMBEDDING_BATCH_SIZE) % 500 < EMBEDDING_BATCH_SIZE) {
+      process.stderr.write(`  ${computed}/${missing.length} embeddings computed...\n`);
+    }
+  }
+
+  return computed;
+}
+
 async function handleSync(ctx: CommandContext): Promise<number> {
   await ctx.store.init();
   const { store, source, args } = ctx;
@@ -275,6 +320,7 @@ async function handleSync(ctx: CommandContext): Promise<number> {
 
   const xrefResult = await syncXrefs(ctx, full);
   const commentsSynced = await syncComments(ctx, maintainers, full);
+  const embeddingsComputed = await syncEmbeddings(store);
 
   if (issues.length > 0) {
     store.setMeta("issue_sync_watermark", issues[issues.length - 1]!.updatedAt);
@@ -293,7 +339,7 @@ async function handleSync(ctx: CommandContext): Promise<number> {
     prs: { added: prs.length, updated: 0 },
     maintainers: { identified: maintainers.length },
     xrefs: totalXrefs,
-    embeddings: { computed: 0 },
+    embeddings: { computed: embeddingsComputed },
   };
 
   const lines = [
@@ -301,6 +347,7 @@ async function handleSync(ctx: CommandContext): Promise<number> {
     `${maintainers.length} maintainers identified.`,
     `${xrefResult.fromPrLinks} xrefs from PR links, ${xrefResult.fromSearch} from search API.`,
     `${commentsSynced} comments synced.`,
+    `${embeddingsComputed} embeddings computed (${store.countEmbeddings()} total indexed).`,
   ];
   output(args, summary, lines.join("\n"));
   return 0;
@@ -455,6 +502,7 @@ async function handleStatus(ctx: CommandContext): Promise<number> {
     prCount: store.countPrs(),
     commentCount: store.countComments(),
     xrefCount: store.countXrefs(),
+    embeddingCount: store.countEmbeddings(),
     maintainerCount: store.getMaintainers().length,
     vectorAvailable: store.vectorAvailable,
     lastSyncAt: store.getMeta("last_sync_at"),

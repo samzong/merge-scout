@@ -28,7 +28,7 @@ export class IssueLensStore {
     const dir = dirname(this.dbPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const sqlite = requireNodeSqlite();
-    this.db = new sqlite.DatabaseSync(this.dbPath);
+    this.db = new sqlite.DatabaseSync(this.dbPath, { allowExtension: true });
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA foreign_keys = ON");
   }
@@ -388,6 +388,39 @@ export class IssueLensStore {
       count: number;
     };
     return row.count;
+  }
+
+  upsertIssueEmbedding(issueNumber: number, embedding: number[]): void {
+    const buf = Buffer.from(new Float32Array(embedding).buffer);
+    this.db.prepare("DELETE FROM issues_vec WHERE rowid = ?").run(issueNumber);
+    this.db
+      .prepare("INSERT INTO issues_vec(rowid, embedding) VALUES (CAST(? AS INTEGER), ?)")
+      .run(issueNumber, buf);
+  }
+
+  getIssueNumbersMissingEmbeddings(limit?: number): number[] {
+    const sql = limit
+      ? `SELECT i.number FROM issues i
+         LEFT JOIN issues_vec v ON v.rowid = i.number
+         WHERE v.rowid IS NULL ORDER BY i.updated_at DESC LIMIT ?`
+      : `SELECT i.number FROM issues i
+         LEFT JOIN issues_vec v ON v.rowid = i.number
+         WHERE v.rowid IS NULL ORDER BY i.updated_at DESC`;
+    const rows = (limit ? this.db.prepare(sql).all(limit) : this.db.prepare(sql).all()) as Array<{
+      number: number;
+    }>;
+    return rows.map((r) => r.number);
+  }
+
+  countEmbeddings(): number {
+    try {
+      const row = this.db.prepare("SELECT COUNT(*) as count FROM issues_vec").get() as {
+        count: number;
+      };
+      return row.count;
+    } catch {
+      return 0;
+    }
   }
 
   buildXrefsFromPrLinks(): number {
