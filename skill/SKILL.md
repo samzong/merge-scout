@@ -20,7 +20,11 @@ Binary: `issue-lens` (run via `pnpm tsx bin/issue-lens.ts` from the issue-lens p
 ## Repo Detection
 
 1. If `--repo` is given, use it.
-2. Otherwise, detect from the current git remote: `git remote get-url origin` → extract `owner/repo`.
+2. Otherwise, detect from git remotes — prefer `upstream` over `origin` (most contributors fork to `origin`, the real project lives at `upstream`):
+   ```bash
+   git remote get-url upstream 2>/dev/null || git remote get-url origin
+   ```
+   Extract `owner/repo` from the URL.
 3. If neither works, ask the user.
 
 ## First-Time Setup
