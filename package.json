@@ -1,0 +1,37 @@
+{
+  "name": "issue-lens",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "issue-lens": "./bin/issue-lens.js"
+  },
+  "type": "module",
+  "scripts": {
+    "issue-lens": "tsx bin/issue-lens.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src/ bin/",
+    "lint:fix": "eslint src/ bin/ --fix",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write ."
+  },
+  "dependencies": {
+    "node-llama-cpp": "3.16.2",
+    "sqlite-vec": "0.1.7-alpha.2",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.1.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^3.2.1"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}

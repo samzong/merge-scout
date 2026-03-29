@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.js
+!bin/issue-lens.js
+!eslint.config.js
+!CLAUDE.md
+.claude/
+.serena/
+CLAUDE.local.md
