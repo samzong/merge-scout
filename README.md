@@ -30,21 +30,13 @@ pnpm run issue-lens -- discover --repo <owner/repo> --limit 10
 
 ## How It Works
 
-```text
-finalScore = contributability × mergeProbability / 100
-```
+$$\text{finalScore} = \frac{\text{contributability} \times \text{mergeProbability}}{100}$$
 
-**contributability** — is this issue worth doing?
+Where:
 
-- Label bonuses: `good first issue` +20, `help wanted` +15, `bug` +10
-- Body clarity, recency, module affinity
+$$\text{contributability} = \underbrace{L_{\text{label}}}_{\text{good first issue +20}\atop\text{help wanted +15, bug +10}} + \underbrace{M_{\text{affinity}}}_{\text{module match}\atop\text{0–25}} + \underbrace{S_{\text{spec}}}_{\text{body clarity}\atop\text{0–10}} + \underbrace{R_{\text{recency}}}_{\text{updated recently}\atop\text{0–10}} - \underbrace{P_{\text{claimed}}}_{\text{assignee/open PR}\atop\text{30–50}}$$
 
-**mergeProbability** — will my PR actually get merged?
-
-- Maintainer response time gradient (replied in 3d → +25, 7d → +20, 14d → +15...)
-- Multiple maintainer replies boost (+5 to +8)
-- Label historical merge rate from cross-reference data
-- Active merger presence, no-response penalty
+$$\text{mergeProbability} = 30 + \underbrace{T_{\text{response}}}_{\text{3d → +25}\atop\text{7d → +20, 14d → +15}} + \underbrace{N_{\text{replies}}}_{\text{2-3 → +5}\atop\text{4+ → +8}} + \underbrace{H_{\text{merge rate}}}_{\text{label history}\atop\text{0–12}} + \underbrace{A_{\text{active}}}_{\text{merger exists}\atop\text{+8}} - \underbrace{D_{\text{silence}}}_{\text{no reply >30d}\atop\text{−20}}$$
 
 ## Usage Scenarios
 
