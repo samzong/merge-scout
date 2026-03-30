@@ -142,6 +142,30 @@ Install: `ln -s /path/to/merge-scout/skill ~/.agents/skills/merge-scout`
 - [node-llama-cpp](https://github.com/withcatai/node-llama-cpp) (local embeddings, embeddinggemma-300m)
 - `gh` CLI for GitHub API (no SDK, no tokens to manage)
 
+### Lineage from clawlens
+
+MergeScout grew out of [clawlens](https://github.com/frankekn/claw-maintainer-tui) by [@frankekn](https://github.com/frankekn). clawlens is a maintainer cockpit for triaging PRs; MergeScout flips the perspective to help contributors pick issues. Same tech stack (Node.js 22 SQLite, sqlite-vec, node-llama-cpp, gh CLI), different audience.
+
+Copied directly from clawlens:
+
+| File                     | What it does                                         |
+| ------------------------ | ---------------------------------------------------- |
+| `src/lib/sqlite.ts`      | Node 22 `node:sqlite` loader via `createRequire`     |
+| `src/lib/sqlite-vec.ts`  | sqlite-vec extension loader                          |
+| `src/lib/concurrency.ts` | Bounded concurrency pool                             |
+| `src/lib/hybrid.ts`      | FTS5 query builder and BM25 score normalization      |
+| `src/embedding.ts`       | Local embedding provider (node-llama-cpp, lazy init) |
+
+`src/github.ts` reuses clawlens's retry/pagination core (`ghApiJsonWithRetry`, `collectPaginated`, `isRetryableGhApiError`, `parseRepoRef`), refactored from PR-centric to Issue-centric with 422 error handling and repo tree fetching added.
+
+`src/store/search.ts` follows the same keyword-priority / vector-fallback fusion from clawlens's `search-workflow.ts`.
+
+Scoring, workability, merge probability, maintainer profiling, and topic discovery are original.
+
+## Acknowledgments
+
+Thanks to [@frankekn](https://github.com/frankekn) and [clawlens](https://github.com/frankekn/claw-maintainer-tui). The local-first SQLite architecture, hybrid search design, and embedding pipeline all come from there.
+
 ## License
 
 MIT
