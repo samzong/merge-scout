@@ -63,6 +63,18 @@ describe("parseCodeowners", () => {
     expect(entries[0]!.path).toBe("pkg/api");
   });
 
+  it("skips dotfiles and file entries with extensions", () => {
+    const content = [
+      ".github/workflows @ci-team",
+      ".github/ISSUE_TEMPLATE @samzong",
+      "/docs/design.md @samzong",
+      "/pkg/cmd/codespace/ @team",
+    ].join("\n");
+    const entries = parseCodeowners(content);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.path).toBe("pkg/cmd/codespace");
+  });
+
   it("strips trailing glob suffixes", () => {
     const content = "/packages/desktop/src/main/ws/** @samzong";
     const entries = parseCodeowners(content);

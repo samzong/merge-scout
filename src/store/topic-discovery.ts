@@ -104,6 +104,9 @@ export function parseCodeowners(content: string): { path: string; owners: string
     path = path.replace(/\/?\*\*$/, "").replace(/\/?\*$/, "");
     if (!path || !path.includes("/")) continue;
     if (path.includes("*")) continue;
+    if (path.startsWith(".")) continue;
+    const lastSegment = path.split("/").pop()!;
+    if (lastSegment.includes(".")) continue;
     const owners = parts
       .slice(1)
       .filter((o) => o.startsWith("@"))
