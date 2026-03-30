@@ -79,6 +79,19 @@ export type ModuleAffinity = {
   score: number;
 };
 
+export type TopicSource = "label" | "directory";
+
+export type ProjectTopic = {
+  id: string;
+  name: string;
+  source: TopicSource;
+  pattern: string;
+  openIssueCount: number;
+  recentPrCount: number;
+  activeMaintainers: string[];
+  discoveredAt: string;
+};
+
 export type IssueSearchFilters = {
   state?: IssueState;
   labels?: string[];

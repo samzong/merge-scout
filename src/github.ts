@@ -118,7 +118,8 @@ async function collectPaginated<T>(
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes("422") || msg.includes("cursor based pagination")) {
-        if (label) process.stderr.write(`\n  ${label}: stopped at page ${page} (GitHub pagination limit)\n`);
+        if (label)
+          process.stderr.write(`\n  ${label}: stopped at page ${page} (GitHub pagination limit)\n`);
         break;
       }
       throw error;
@@ -232,7 +233,9 @@ export class GhCliIssueDataSource implements IssueDataSource {
         `repos/${repo.owner}/${repo.name}/issues?state=all&per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc${sinceParam}`,
     );
     const issues = raw.filter((item) => !item.pull_request);
-    process.stderr.write(`  ${issues.length} issues (${raw.length - issues.length} PRs filtered out)\n`);
+    process.stderr.write(
+      `  ${issues.length} issues (${raw.length - issues.length} PRs filtered out)\n`,
+    );
     return issues.map(toIssueRecord);
   }
 
@@ -295,7 +298,15 @@ export class GhCliIssueDataSource implements IssueDataSource {
   }
 
   async searchPrsForIssue(repo: RepoRef, issueNumber: number): Promise<IssuePrXref[]> {
-    type SearchResult = { items: Array<{ number: number; title: string; state: string; user: { login: string } | null; pull_request?: { merged_at: string | null } }> };
+    type SearchResult = {
+      items: Array<{
+        number: number;
+        title: string;
+        state: string;
+        user: { login: string } | null;
+        pull_request?: { merged_at: string | null };
+      }>;
+    };
     const result = await ghApiJsonWithRetry<SearchResult>(
       `search/issues?q=${encodeURIComponent(`repo:${repo.owner}/${repo.name} is:pr #${issueNumber}`)}&per_page=20`,
     );
@@ -312,8 +323,7 @@ export class GhCliIssueDataSource implements IssueDataSource {
   async getContributors(repo: RepoRef): Promise<string[]> {
     type Contributor = { login: string };
     const raw = await collectPaginated<Contributor>(
-      (page) =>
-        `repos/${repo.owner}/${repo.name}/contributors?per_page=${PAGE_SIZE}&page=${page}`,
+      (page) => `repos/${repo.owner}/${repo.name}/contributors?per_page=${PAGE_SIZE}&page=${page}`,
       "contributors",
     );
     return raw.map((c) => c.login);
@@ -331,4 +341,14 @@ export class GhCliIssueDataSource implements IssueDataSource {
       return null;
     }
   }
+}
+
+type TreeEntry = { path: string; type: string };
+
+export async function fetchDirectoryTree(repo: RepoRef, defaultBranch = "main"): Promise<string[]> {
+  type TreeResponse = { tree: TreeEntry[] };
+  const data = await ghApiJsonWithRetry<TreeResponse>(
+    `repos/${repo.owner}/${repo.name}/git/trees/${defaultBranch}?recursive=1`,
+  );
+  return data.tree.filter((e) => e.type === "tree").map((e) => e.path);
 }

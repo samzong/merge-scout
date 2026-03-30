@@ -4,6 +4,7 @@ import type {
   DiscoverResult,
   MaintainerProfile,
   ModuleAffinity,
+  ProjectTopic,
 } from "../types.js";
 import { resolveWorkability } from "./workability.js";
 import { computeMergeProbability } from "./merge-probability.js";
@@ -57,10 +58,10 @@ export function buildDiscoverResults(params: {
   db: DatabaseSync;
   issues: IssueRecord[];
   maintainers: MaintainerProfile[];
-  contributorModules: string[];
+  interests: ProjectTopic[];
   limit: number;
 }): DiscoverResult[] {
-  const { db, issues, maintainers, contributorModules, limit } = params;
+  const { db, issues, maintainers, interests, limit } = params;
 
   const results: DiscoverResult[] = [];
 
@@ -78,7 +79,7 @@ export function buildDiscoverResults(params: {
     }));
 
     const workability = resolveWorkability({ issue, xrefs });
-    const moduleAffinity = computeModuleAffinity(issue, contributorModules);
+    const moduleAffinity = computeTopicAffinity(issue, interests);
     const xrefHasOpenPr = xrefs.some((x) => x.prState === "open");
 
     const contributability = computeContributability({
@@ -106,20 +107,26 @@ export function buildDiscoverResults(params: {
   return results.slice(0, limit);
 }
 
-function computeModuleAffinity(issue: IssueRecord, patterns: string[]): ModuleAffinity {
-  if (patterns.length === 0) return { matched: false, modules: [], score: 0 };
+export function computeTopicAffinity(
+  issue: IssueRecord,
+  interests: ProjectTopic[],
+): ModuleAffinity {
+  if (interests.length === 0) return { matched: false, modules: [], score: 0 };
 
-  const text = `${issue.title} ${issue.body ?? ""} ${issue.labels.join(" ")}`.toLowerCase();
   const matched: string[] = [];
-
-  for (const pattern of patterns) {
-    const simplified = pattern.replace(/\*\*/g, "").replace(/\*/g, "").replace(/\//g, " ").trim().toLowerCase();
-    const keywords = simplified.split(/\s+/).filter((k) => k.length > 2);
-    if (keywords.some((kw) => text.includes(kw))) {
-      matched.push(pattern);
+  for (const topic of interests) {
+    if (topic.source === "label") {
+      if (issue.labels.some((l) => l === topic.pattern)) {
+        matched.push(topic.name);
+      }
+    } else if (topic.source === "directory") {
+      const text = `${issue.title} ${issue.body ?? ""}`;
+      if (text.includes(topic.pattern)) {
+        matched.push(topic.name);
+      }
     }
   }
 
-  const score = matched.length > 0 ? Math.min(1, matched.length / patterns.length + 0.3) : 0;
+  const score = matched.length > 0 ? Math.min(1, matched.length / interests.length + 0.3) : 0;
   return { matched: matched.length > 0, modules: matched, score };
 }

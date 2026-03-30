@@ -10,6 +10,7 @@ import type {
   PrRecord,
   IssuePrXref,
   MaintainerProfile,
+  ProjectTopic,
 } from "./types.js";
 
 export function defaultDbPath(repo: string): string {
@@ -123,9 +124,23 @@ export class MergeScoutStore {
     `);
 
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS contributor_modules (
-        pattern TEXT PRIMARY KEY,
-        label TEXT
+      CREATE TABLE IF NOT EXISTS project_topics (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        source TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        open_issue_count INTEGER DEFAULT 0,
+        recent_pr_count INTEGER DEFAULT 0,
+        active_maintainers TEXT DEFAULT '[]',
+        discovered_at TEXT NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS contributor_interests (
+        topic_id TEXT NOT NULL REFERENCES project_topics(id),
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (topic_id)
       )
     `);
 
@@ -458,6 +473,81 @@ export class MergeScoutStore {
     }
     return count;
   }
+
+  replaceTopics(topics: ProjectTopic[]): void {
+    this.db.exec(
+      "DELETE FROM project_topics WHERE id NOT IN (SELECT topic_id FROM contributor_interests)",
+    );
+    const stmt = this.db.prepare(
+      `INSERT INTO project_topics (id, name, source, pattern, open_issue_count, recent_pr_count, active_maintainers, discovered_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name=excluded.name, source=excluded.source, pattern=excluded.pattern,
+         open_issue_count=excluded.open_issue_count, recent_pr_count=excluded.recent_pr_count,
+         active_maintainers=excluded.active_maintainers, discovered_at=excluded.discovered_at`,
+    );
+    for (const t of topics) {
+      stmt.run(
+        t.id,
+        t.name,
+        t.source,
+        t.pattern,
+        t.openIssueCount,
+        t.recentPrCount,
+        JSON.stringify(t.activeMaintainers),
+        t.discoveredAt,
+      );
+    }
+  }
+
+  getTopics(): ProjectTopic[] {
+    const rows = this.db
+      .prepare("SELECT * FROM project_topics ORDER BY open_issue_count DESC, name ASC")
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(rowToTopic);
+  }
+
+  getInterests(): ProjectTopic[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.* FROM project_topics t
+         JOIN contributor_interests ci ON ci.topic_id = t.id
+         ORDER BY t.open_issue_count DESC`,
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(rowToTopic);
+  }
+
+  addInterest(topicId: string): boolean {
+    const exists = this.db.prepare("SELECT id FROM project_topics WHERE id = ?").get(topicId) as
+      | { id: string }
+      | undefined;
+    if (!exists) return false;
+    this.db
+      .prepare("INSERT OR IGNORE INTO contributor_interests (topic_id, added_at) VALUES (?, ?)")
+      .run(topicId, new Date().toISOString());
+    return true;
+  }
+
+  removeInterest(topicId: string): boolean {
+    const result = this.db
+      .prepare("DELETE FROM contributor_interests WHERE topic_id = ?")
+      .run(topicId);
+    return result.changes > 0;
+  }
+}
+
+function rowToTopic(row: Record<string, unknown>): ProjectTopic {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    source: row.source as ProjectTopic["source"],
+    pattern: row.pattern as string,
+    openIssueCount: (row.open_issue_count as number) ?? 0,
+    recentPrCount: (row.recent_pr_count as number) ?? 0,
+    activeMaintainers: JSON.parse((row.active_maintainers as string) || "[]"),
+    discoveredAt: row.discovered_at as string,
+  };
 }
 
 function rowToIssue(row: Record<string, unknown>): IssueRecord {

@@ -5,6 +5,7 @@ import { inferMaintainers } from "./store/maintainer.js";
 import { buildDiscoverResults } from "./store/priority.js";
 import { resolveWorkability } from "./store/workability.js";
 import { computeMergeProbability } from "./store/merge-probability.js";
+import { discoverTopics } from "./store/topic-discovery.js";
 import { runTasksWithConcurrency } from "./lib/concurrency.js";
 import { buildEmbeddingDocument } from "./lib/text.js";
 import type { RepoRef, SyncSummary, MaintainerProfile } from "./types.js";
@@ -30,6 +31,7 @@ type ParsedArgs = {
   json: boolean;
   query?: string;
   issueNumber?: number;
+  positional: string[];
 };
 
 export class CliUsageError extends Error {
@@ -70,7 +72,7 @@ Commands:
   xref         Issue → PR cross-references
   maintainers  Maintainer profiles and activity
   status       Sync status and index health
-  config       View/edit contributor module config
+  config       View/edit topic interests (topics | select | deselect)
 
 Options:
   --repo <owner/name>  Target repository (required)
@@ -98,6 +100,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     full: false,
     limit: 20,
     json: false,
+    positional: [],
   };
 
   const positional: string[] = [];
@@ -142,6 +145,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     args.issueNumber = Number(positional[0]);
   }
 
+  args.positional = positional;
   if (!args.dbPath) args.dbPath = defaultDbPath(args.repo);
   return args;
 }
@@ -322,6 +326,10 @@ async function handleSync(ctx: CommandContext): Promise<number> {
   const commentsSynced = await syncComments(ctx, maintainers, full);
   const embeddingsComputed = await syncEmbeddings(store);
 
+  process.stderr.write("Discovering project topics...\n");
+  const topics = await discoverTopics(store.db, ctx.repo);
+  store.replaceTopics(topics);
+
   const now = new Date().toISOString();
   if (issues.length > 0) {
     store.setMeta("issue_sync_watermark", issues[issues.length - 1]!.updatedAt);
@@ -347,6 +355,7 @@ async function handleSync(ctx: CommandContext): Promise<number> {
     `${xrefResult.fromPrLinks} xrefs from PR links, ${xrefResult.fromSearch} from search API.`,
     `${commentsSynced} comments synced.`,
     `${embeddingsComputed} embeddings computed (${store.countEmbeddings()} total indexed).`,
+    `${topics.length} project topics discovered.`,
   ];
   output(args, summary, lines.join("\n"));
   return 0;
@@ -358,16 +367,13 @@ async function handleDiscover(ctx: CommandContext): Promise<number> {
   const issues = store.getOpenIssues();
   const maintainers = store.getMaintainers();
 
-  const modulesRows = store.db.prepare("SELECT pattern FROM contributor_modules").all() as Array<{
-    pattern: string;
-  }>;
-  const modules = modulesRows.map((r) => r.pattern);
+  const interests = store.getInterests();
 
   const results = buildDiscoverResults({
     db: store.db,
     issues,
     maintainers,
-    contributorModules: modules,
+    interests,
     limit: args.limit,
   });
 
@@ -513,17 +519,105 @@ async function handleStatus(ctx: CommandContext): Promise<number> {
 
 async function handleConfig(ctx: CommandContext): Promise<number> {
   await ctx.store.init();
-  const rows = ctx.store.db
-    .prepare("SELECT pattern, label FROM contributor_modules")
-    .all() as Array<{ pattern: string; label: string | null }>;
-  output(
-    ctx.args,
-    { modules: rows },
-    rows.length > 0
-      ? `Contributor modules:\n${rows.map((r) => `  ${r.pattern}${r.label ? ` (${r.label})` : ""}`).join("\n")}`
-      : "No contributor modules configured. Use: merge-scout config --repo <repo> add <pattern>",
-  );
+  const { store, args } = ctx;
+  const sub = args.positional[0];
+
+  if (sub === "topics") {
+    const topics = store.getTopics();
+    const data = { repo: args.repo, topicCount: topics.length, topics };
+    if (args.json) {
+      output(args, data);
+    } else {
+      if (topics.length === 0) {
+        console.log("No topics discovered yet. Run: merge-scout sync --repo <repo>");
+      } else {
+        console.log(`\nDiscovered ${topics.length} topics for ${args.repo}:\n`);
+        for (const t of topics) {
+          const maintainers =
+            t.activeMaintainers.length > 0
+              ? ` | maintainers: ${t.activeMaintainers
+                  .slice(0, 3)
+                  .map((m) => `@${m}`)
+                  .join(", ")}`
+              : "";
+          console.log(
+            `  ${t.id}  (${t.openIssueCount} open issues, ${t.recentPrCount} recent PRs${maintainers})`,
+          );
+        }
+      }
+    }
+    return 0;
+  }
+
+  if (sub === "select") {
+    const names = args.positional.slice(1);
+    if (names.length === 0) {
+      throw new CliUsageError("config select requires at least one topic name or ID", 1);
+    }
+    const topics = store.getTopics();
+    const added: string[] = [];
+    const notFound: string[] = [];
+    for (const name of names) {
+      const topic = resolveTopicByNameOrId(topics, name);
+      if (topic && store.addInterest(topic.id)) {
+        added.push(topic.id);
+      } else if (!topic) {
+        notFound.push(name);
+      }
+    }
+    const data = { added, notFound };
+    if (args.json) {
+      output(args, data);
+    } else {
+      if (added.length > 0) console.log(`Added: ${added.join(", ")}`);
+      if (notFound.length > 0) console.log(`Not found: ${notFound.join(", ")}`);
+    }
+    return notFound.length > 0 ? 1 : 0;
+  }
+
+  if (sub === "deselect") {
+    const names = args.positional.slice(1);
+    if (names.length === 0) {
+      throw new CliUsageError("config deselect requires at least one topic name or ID", 1);
+    }
+    const topics = store.getTopics();
+    const removed: string[] = [];
+    for (const name of names) {
+      const topic = resolveTopicByNameOrId(topics, name);
+      if (topic && store.removeInterest(topic.id)) {
+        removed.push(topic.id);
+      }
+    }
+    output(
+      args,
+      { removed },
+      removed.length > 0 ? `Removed: ${removed.join(", ")}` : "No matching interests to remove.",
+    );
+    return 0;
+  }
+
+  const interests = store.getInterests();
+  const data = { repo: args.repo, interests };
+  if (args.json) {
+    output(args, data);
+  } else {
+    if (interests.length === 0) {
+      console.log("No interests configured. Run: merge-scout config topics --repo <repo>");
+    } else {
+      console.log(`\nYour interests for ${args.repo}:\n`);
+      for (const t of interests) {
+        console.log(`  ${t.id}  (${t.name})`);
+      }
+    }
+  }
   return 0;
+}
+
+function resolveTopicByNameOrId(
+  topics: import("./types.js").ProjectTopic[],
+  input: string,
+): import("./types.js").ProjectTopic | undefined {
+  return topics.find((t) => t.id === input || t.name === input || t.pattern === input);
 }
 
 async function handleRelated(ctx: CommandContext): Promise<number> {
