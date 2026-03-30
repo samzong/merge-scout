@@ -1,10 +1,19 @@
 # MergeScout
 
-Local-first CLI that helps open source contributors find the **best issues to work on** — ranked by value × merge probability.
+Find GitHub issues worth your time.
 
-Syncs GitHub data into SQLite, scores every open issue, and provides hybrid semantic search (FTS5 + vector). Designed as an AI agent tool — the real UI is your AI assistant.
+MergeScout is a local-first CLI for open source contributors. It syncs GitHub issues, PRs, comments, and maintainer activity into SQLite, then ranks open issues by **contributability × merge probability**.
 
-## Install AI Skill
+The goal is simple: help you pick work that is both a good fit and more likely to land.
+
+What MergeScout gives you:
+
+- ranked issue recommendations instead of raw issue lists
+- merge-probability signals based on maintainer activity and repo history
+- hybrid search with FTS5 + vector similarity for vague problem statements
+- AI-friendly `--json` output so an assistant can drive the workflow end to end
+
+## Install
 
 ```bash
 git clone https://github.com/samzong/merge-scout.git
@@ -12,7 +21,7 @@ cd merge-scout && pnpm install
 ln -s "$(pwd)/skill" ~/.agents/skills/merge-scout
 ```
 
-Then tell your AI: **"Find me the best issue to contribute to in this project"** — it handles the rest.
+Then tell your AI: **"Find me the best issue to contribute to in this project"**.
 
 ## Prerequisites
 
