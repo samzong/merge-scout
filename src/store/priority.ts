@@ -113,17 +113,16 @@ export function computeTopicAffinity(
 ): ModuleAffinity {
   if (interests.length === 0) return { matched: false, modules: [], score: 0 };
 
+  const text = `${issue.title} ${issue.body ?? ""}`.toLowerCase();
   const matched: string[] = [];
+
   for (const topic of interests) {
-    if (topic.source === "label") {
-      if (issue.labels.some((l) => l === topic.pattern)) {
-        matched.push(topic.name);
-      }
-    } else if (topic.source === "directory") {
-      const text = `${issue.title} ${issue.body ?? ""}`;
-      if (text.includes(topic.pattern)) {
-        matched.push(topic.name);
-      }
+    const pattern = topic.pattern.toLowerCase();
+    const name = topic.name.toLowerCase();
+    if (text.includes(pattern) || text.includes(name)) {
+      matched.push(topic.name);
+    } else if (issue.labels.some((l) => l.toLowerCase().includes(name))) {
+      matched.push(topic.name);
     }
   }
 

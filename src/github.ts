@@ -345,10 +345,41 @@ export class GhCliIssueDataSource implements IssueDataSource {
 
 type TreeEntry = { path: string; type: string };
 
-export async function fetchDirectoryTree(repo: RepoRef, defaultBranch = "main"): Promise<string[]> {
+export type TreeInfo = {
+  directories: string[];
+  codeownersPath: string | null;
+  ownersDirs: string[];
+};
+
+export async function fetchRepoTree(repo: RepoRef): Promise<TreeInfo> {
   type TreeResponse = { tree: TreeEntry[] };
   const data = await ghApiJsonWithRetry<TreeResponse>(
-    `repos/${repo.owner}/${repo.name}/git/trees/${defaultBranch}?recursive=1`,
+    `repos/${repo.owner}/${repo.name}/git/trees/HEAD?recursive=1`,
   );
-  return data.tree.filter((e) => e.type === "tree").map((e) => e.path);
+  const directories = data.tree.filter((e) => e.type === "tree").map((e) => e.path);
+  const blobs = data.tree.filter((e) => e.type === "blob");
+
+  const codeownersLocations = ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"];
+  const codeownersPath = codeownersLocations.find((p) => blobs.some((b) => b.path === p)) ?? null;
+
+  const ownersDirs = blobs
+    .filter((e) => e.path === "OWNERS" || e.path.endsWith("/OWNERS"))
+    .map((e) => (e.path === "OWNERS" ? "" : e.path.slice(0, -"/OWNERS".length)));
+
+  return { directories, codeownersPath, ownersDirs };
+}
+
+export async function fetchFileContent(repo: RepoRef, path: string): Promise<string | null> {
+  try {
+    type ContentResponse = { content: string; encoding: string };
+    const data = await ghApiJsonWithRetry<ContentResponse>(
+      `repos/${repo.owner}/${repo.name}/contents/${path}`,
+    );
+    if (data.encoding === "base64") {
+      return Buffer.from(data.content, "base64").toString("utf-8");
+    }
+    return data.content;
+  } catch {
+    return null;
+  }
 }

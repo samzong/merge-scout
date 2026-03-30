@@ -79,7 +79,7 @@ export type ModuleAffinity = {
   score: number;
 };
 
-export type TopicSource = "label" | "directory";
+export type TopicSource = "codeowners" | "pr-scope" | "directory";
 
 export type ProjectTopic = {
   id: string;

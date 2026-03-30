@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { discoverLabelTopics, discoverDirectoryTopics, enrichTopics } from "./topic-discovery.js";
+import {
+  parseCodeowners,
+  discoverCodeownersTopics,
+  discoverOwnersDirTopics,
+  discoverPrScopeTopics,
+  discoverDirectoryTopics,
+  enrichTopics,
+} from "./topic-discovery.js";
 import { computeTopicAffinity } from "./priority.js";
 import { MergeScoutStore } from "../store.js";
 import { mkdtempSync } from "node:fs";
@@ -31,50 +38,148 @@ function makeIssue(n: number, labels: string[], body = ""): IssueRecord {
   };
 }
 
-describe("discoverLabelTopics", () => {
-  it("discovers structured prefix labels", () => {
-    const store = makeTempStore();
-    for (let i = 1; i <= 5; i++) {
-      store.upsertIssue(makeIssue(i, ["area/scheduler"]));
-    }
-    const topics = discoverLabelTopics(store.db);
-    expect(topics).toHaveLength(1);
-    expect(topics[0]!.id).toBe("label:area/scheduler");
+describe("parseCodeowners", () => {
+  it("parses standard directory entries", () => {
+    const content = [
+      "* @global-owner",
+      "/pkg/scheduler/ @alice @bob",
+      "/internal/codespaces/ @cli/codespaces",
+    ].join("\n");
+    const entries = parseCodeowners(content);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual({ path: "pkg/scheduler", owners: ["alice", "bob"] });
+    expect(entries[1]).toEqual({ path: "internal/codespaces", owners: ["cli/codespaces"] });
+  });
+
+  it("skips glob patterns and single-file entries", () => {
+    const content = [
+      "*.js @frontend",
+      "/docs/ @docs-team",
+      "/pkg/api/ @api-team",
+      "!excluded/ @nobody",
+    ].join("\n");
+    const entries = parseCodeowners(content);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.path).toBe("pkg/api");
+  });
+
+  it("strips trailing glob suffixes", () => {
+    const content = "/packages/desktop/src/main/ws/** @samzong";
+    const entries = parseCodeowners(content);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.path).toBe("packages/desktop/src/main/ws");
+  });
+
+  it("skips comments and blank lines", () => {
+    const content = ["# This is a comment", "", "/pkg/core/ @team"].join("\n");
+    const entries = parseCodeowners(content);
+    expect(entries).toHaveLength(1);
+  });
+});
+
+describe("discoverCodeownersTopics", () => {
+  it("creates topics with owners from CODEOWNERS content", () => {
+    const content = [
+      "* @global",
+      "/pkg/scheduler/ @alice @bob",
+      "/internal/codespaces/ @cli/codespaces",
+    ].join("\n");
+    const topics = discoverCodeownersTopics(content);
+    expect(topics).toHaveLength(2);
     expect(topics[0]!.name).toBe("scheduler");
-    expect(topics[0]!.openIssueCount).toBe(5);
+    expect(topics[0]!.source).toBe("codeowners");
+    expect(topics[0]!.activeMaintainers).toEqual(["alice", "bob"]);
+    expect(topics[1]!.name).toBe("codespaces");
   });
 
-  it("filters out workflow labels", () => {
-    const store = makeTempStore();
-    for (let i = 1; i <= 10; i++) {
-      store.upsertIssue(makeIssue(i, ["bug", "good first issue", "performance"]));
-    }
-    const topics = discoverLabelTopics(store.db);
-    const names = topics.map((t) => t.pattern);
-    expect(names).not.toContain("bug");
-    expect(names).not.toContain("good first issue");
-    expect(names).toContain("performance");
+  it("filters out generic directory names", () => {
+    const content = "/packages/shared/src/** @samzong";
+    const topics = discoverCodeownersTopics(content);
+    expect(topics).toHaveLength(0);
+  });
+});
+
+describe("discoverOwnersDirTopics", () => {
+  it("creates topics from OWNERS directories", () => {
+    const dirs = ["", "cmd", "cmd/kueueviz", "pkg", "pkg/controller", "pkg/webhooks"];
+    const topics = discoverOwnersDirTopics(dirs, new Set());
+    const names = topics.map((t) => t.name);
+    expect(names).toContain("kueueviz");
+    expect(names).toContain("controller");
+    expect(names).toContain("webhooks");
+    expect(names).not.toContain("cmd");
+    expect(names).not.toContain("pkg");
   });
 
-  it("filters out standalone labels below threshold", () => {
-    const store = makeTempStore();
-    store.upsertIssue(makeIssue(1, ["rare-label"]));
-    store.upsertIssue(makeIssue(2, ["rare-label"]));
-    for (let i = 3; i <= 10; i++) {
-      store.upsertIssue(makeIssue(i, ["common-label"]));
-    }
-    const topics = discoverLabelTopics(store.db);
-    const names = topics.map((t) => t.pattern);
-    expect(names).toContain("common-label");
-    expect(names).not.toContain("rare-label");
+  it("skips root, SKIP_DIRS, and existing names", () => {
+    const dirs = ["", "pkg/test", "pkg/vendor", "pkg/scheduler"];
+    const topics = discoverOwnersDirTopics(dirs, new Set(["scheduler"]));
+    expect(topics).toHaveLength(0);
   });
 
-  it("filters out workflow prefix labels", () => {
+  it("skips deep paths (>3 segments)", () => {
+    const dirs = ["pkg/a/b/c/deep"];
+    const topics = discoverOwnersDirTopics(dirs, new Set());
+    expect(topics).toHaveLength(0);
+  });
+});
+
+describe("discoverPrScopeTopics", () => {
+  it("extracts scopes from PR titles", () => {
     const store = makeTempStore();
     for (let i = 1; i <= 5; i++) {
-      store.upsertIssue(makeIssue(i, ["priority/P1", "lifecycle/stale"]));
+      store.upsertPr({
+        number: i,
+        title: `fix(scheduler): fix bug ${i}`,
+        state: "merged",
+        author: "alice",
+        mergedBy: null,
+        mergedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        labels: [],
+        linkedIssues: [],
+      });
     }
-    const topics = discoverLabelTopics(store.db);
+    const topics = discoverPrScopeTopics(store.db);
+    expect(topics).toHaveLength(1);
+    expect(topics[0]!.name).toBe("scheduler");
+    expect(topics[0]!.source).toBe("pr-scope");
+    expect(topics[0]!.recentPrCount).toBe(5);
+  });
+
+  it("filters noise scopes", () => {
+    const store = makeTempStore();
+    for (let i = 1; i <= 5; i++) {
+      store.upsertPr({
+        number: i,
+        title: `chore(deps): bump dependency ${i}`,
+        state: "merged",
+        author: "bot",
+        mergedBy: null,
+        mergedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        labels: [],
+        linkedIssues: [],
+      });
+    }
+    const topics = discoverPrScopeTopics(store.db);
+    expect(topics).toHaveLength(0);
+  });
+
+  it("applies minimum count threshold", () => {
+    const store = makeTempStore();
+    store.upsertPr({
+      number: 1,
+      title: "fix(rare-module): fix something",
+      state: "merged",
+      author: "alice",
+      mergedBy: null,
+      mergedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      labels: [],
+      linkedIssues: [],
+    });
+    const topics = discoverPrScopeTopics(store.db);
     expect(topics).toHaveLength(0);
   });
 });
@@ -91,7 +196,7 @@ describe("discoverDirectoryTopics", () => {
     expect(names).not.toContain("tests");
   });
 
-  it("skips directory topics whose names collide with existing label topics", () => {
+  it("skips directory topics whose names collide with existing topics", () => {
     const tree = ["src", "src/scheduler", "src/networking", "src/security"];
     const existing = new Set(["scheduler"]);
     const topics = discoverDirectoryTopics(tree, existing);
@@ -101,7 +206,7 @@ describe("discoverDirectoryTopics", () => {
     expect(names).toContain("security");
   });
 
-  it("detects project-name source root like vllm/", () => {
+  it("detects project-name source root", () => {
     const tree = [
       "benchmarks",
       "docs",
@@ -129,35 +234,52 @@ describe("computeTopicAffinity", () => {
     expect(result.score).toBe(0);
   });
 
-  it("matches label-based topics exactly", () => {
-    const issue = makeIssue(1, ["rocm", "bug"]);
+  it("matches via issue body text (path pattern)", () => {
+    const issue = makeIssue(1, [], "Error in pkg/scheduler when processing jobs");
     const interests: ProjectTopic[] = [
       {
-        id: "label:rocm",
-        name: "rocm",
-        source: "label",
-        pattern: "rocm",
+        id: "codeowners:pkg/scheduler",
+        name: "scheduler",
+        source: "codeowners",
+        pattern: "pkg/scheduler",
         openIssueCount: 10,
-        recentPrCount: 0,
+        recentPrCount: 5,
+        activeMaintainers: ["alice"],
+        discoveredAt: "2026-03-30T00:00:00Z",
+      },
+    ];
+    const result = computeTopicAffinity(issue, interests);
+    expect(result.matched).toBe(true);
+    expect(result.modules).toEqual(["scheduler"]);
+  });
+
+  it("matches via issue labels", () => {
+    const issue = makeIssue(1, ["area/scheduler", "bug"]);
+    const interests: ProjectTopic[] = [
+      {
+        id: "pr-scope:scheduler",
+        name: "scheduler",
+        source: "pr-scope",
+        pattern: "scheduler",
+        openIssueCount: 10,
+        recentPrCount: 5,
         activeMaintainers: [],
         discoveredAt: "2026-03-30T00:00:00Z",
       },
     ];
     const result = computeTopicAffinity(issue, interests);
     expect(result.matched).toBe(true);
-    expect(result.modules).toEqual(["rocm"]);
-    expect(result.score).toBeGreaterThan(0);
   });
 
-  it("does not false-positive on partial label match", () => {
-    const issue = makeIssue(1, ["rocm-experimental"]);
+  it("does not false-positive on unrelated content", () => {
+    const issue = makeIssue(1, ["networking"], "Fix network timeout");
     const interests: ProjectTopic[] = [
       {
-        id: "label:rocm",
-        name: "rocm",
-        source: "label",
-        pattern: "rocm",
-        openIssueCount: 10,
+        id: "dir:pkg/scheduler",
+        name: "scheduler",
+        source: "directory",
+        pattern: "pkg/scheduler",
+        openIssueCount: 0,
         recentPrCount: 0,
         activeMaintainers: [],
         discoveredAt: "2026-03-30T00:00:00Z",
@@ -166,48 +288,68 @@ describe("computeTopicAffinity", () => {
     const result = computeTopicAffinity(issue, interests);
     expect(result.matched).toBe(false);
   });
-
-  it("matches directory-based topics via body text", () => {
-    const issue = makeIssue(1, [], "Error in vllm/distributed when using 2 GPUs");
-    const interests: ProjectTopic[] = [
-      {
-        id: "dir:vllm/distributed",
-        name: "distributed",
-        source: "directory",
-        pattern: "vllm/distributed",
-        openIssueCount: 0,
-        recentPrCount: 0,
-        activeMaintainers: [],
-        discoveredAt: "2026-03-30T00:00:00Z",
-      },
-    ];
-    const result = computeTopicAffinity(issue, interests);
-    expect(result.matched).toBe(true);
-    expect(result.modules).toEqual(["distributed"]);
-  });
 });
 
 describe("enrichTopics", () => {
-  it("counts recent PRs for label topics", () => {
+  it("counts open issues mentioning topic name", () => {
+    const store = makeTempStore();
+    store.upsertIssue(makeIssue(1, [], "Bug in scheduler component"));
+    store.upsertIssue(makeIssue(2, [], "Scheduler performance issue"));
+    store.upsertIssue(makeIssue(3, [], "Unrelated bug"));
+    const topics: ProjectTopic[] = [
+      {
+        id: "dir:pkg/scheduler",
+        name: "scheduler",
+        source: "directory",
+        pattern: "pkg/scheduler",
+        openIssueCount: 0,
+        recentPrCount: 0,
+        activeMaintainers: [],
+        discoveredAt: new Date().toISOString(),
+      },
+    ];
+    enrichTopics(store.db, topics);
+    expect(topics[0]!.openIssueCount).toBe(2);
+  });
+
+  it("preserves pre-set maintainers from CODEOWNERS", () => {
+    const store = makeTempStore();
+    const topics: ProjectTopic[] = [
+      {
+        id: "codeowners:pkg/scheduler",
+        name: "scheduler",
+        source: "codeowners",
+        pattern: "pkg/scheduler",
+        openIssueCount: 0,
+        recentPrCount: 0,
+        activeMaintainers: ["alice", "bob"],
+        discoveredAt: new Date().toISOString(),
+      },
+    ];
+    enrichTopics(store.db, topics);
+    expect(topics[0]!.activeMaintainers).toEqual(["alice", "bob"]);
+  });
+
+  it("counts recent merged PRs for topic", () => {
     const store = makeTempStore();
     store.upsertPr({
       number: 100,
-      title: "fix scheduler",
+      title: "fix(scheduler): fix race condition",
       state: "merged",
       author: "alice",
       mergedBy: null,
       mergedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
-      labels: ["area/scheduler"],
+      labels: [],
       linkedIssues: [],
     });
     const topics: ProjectTopic[] = [
       {
-        id: "label:area/scheduler",
+        id: "dir:pkg/scheduler",
         name: "scheduler",
-        source: "label",
-        pattern: "area/scheduler",
-        openIssueCount: 5,
+        source: "directory",
+        pattern: "pkg/scheduler",
+        openIssueCount: 0,
         recentPrCount: 0,
         activeMaintainers: [],
         discoveredAt: new Date().toISOString(),
