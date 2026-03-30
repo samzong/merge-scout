@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Issue Lens — local-first CLI tool that helps open source contributors find high-value GitHub Issues. Syncs repo data into SQLite, scores Issues by `finalScore = (contributability × mergeProbability) / 100`, and surfaces the best contribution opportunities.
+MergeScout — local-first CLI tool that helps open source contributors find high-value GitHub Issues. Syncs repo data into SQLite, scores Issues by `finalScore = (contributability × mergeProbability) / 100`, and surfaces the best contribution opportunities.
 
 ## Tech Stack
 
@@ -27,7 +27,7 @@ Issue Lens — local-first CLI tool that helps open source contributors find hig
 - `pnpm test` — `vitest run`
 - `pnpm run format:fix` — prettier fix
 - `pnpm run format` — prettier check
-- `pnpm run issue-lens` — run the CLI
+- `pnpm run merge-scout` — run the CLI
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ Issue Lens — local-first CLI tool that helps open source contributors find hig
 - Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
 - All CLI commands accept `--repo <owner/name>`, `--limit N`, `--json`, `--db <path>`
 - Exit codes: 0 success, 1 error, 2 no results
-- DB path: `~/.cache/issue-lens/repos/{safe_repo_name}.db`
+- DB path: `~/.cache/merge-scout/repos/{safe_repo_name}.db`
 
 ## Architecture
 

@@ -1,5 +1,5 @@
 import { parseRepoRef, GhCliIssueDataSource } from "./github.js";
-import { IssueLensStore, defaultDbPath } from "./store.js";
+import { MergeScoutStore, defaultDbPath } from "./store.js";
 import { searchIssues } from "./store/search.js";
 import { inferMaintainers } from "./store/maintainer.js";
 import { buildDiscoverResults } from "./store/priority.js";
@@ -56,9 +56,9 @@ const COMMANDS: Command[] = [
 ];
 
 function usage(): string {
-  return `issue-lens — AI-first Issue discovery for open source contributors
+  return `merge-scout — AI-first Issue discovery for open source contributors
 
-Usage: issue-lens <command> --repo <owner/name> [options]
+Usage: merge-scout <command> --repo <owner/name> [options]
 
 Commands:
   init         Initialize local DB for a repo
@@ -149,7 +149,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 type CommandContext = {
   args: ParsedArgs;
   repo: RepoRef;
-  store: IssueLensStore;
+  store: MergeScoutStore;
   source: GhCliIssueDataSource;
 };
 
@@ -167,7 +167,7 @@ async function handleInit(ctx: CommandContext): Promise<number> {
   output(
     ctx.args,
     { ok: true, repo: ctx.args.repo, dbPath: ctx.store.dbPath },
-    `Initialized issue-lens for ${ctx.args.repo}\nDB: ${ctx.store.dbPath}`,
+    `Initialized MergeScout for ${ctx.args.repo}\nDB: ${ctx.store.dbPath}`,
   );
   return 0;
 }
@@ -257,7 +257,7 @@ async function syncXrefs(
 
 const EMBEDDING_BATCH_SIZE = 32;
 
-async function syncEmbeddings(store: IssueLensStore): Promise<number> {
+async function syncEmbeddings(store: MergeScoutStore): Promise<number> {
   if (!store.vectorAvailable) return 0;
 
   const missing = store.getIssueNumbersMissingEmbeddings();
@@ -521,7 +521,7 @@ async function handleConfig(ctx: CommandContext): Promise<number> {
     { modules: rows },
     rows.length > 0
       ? `Contributor modules:\n${rows.map((r) => `  ${r.pattern}${r.label ? ` (${r.label})` : ""}`).join("\n")}`
-      : "No contributor modules configured. Use: issue-lens config --repo <repo> add <pattern>",
+      : "No contributor modules configured. Use: merge-scout config --repo <repo> add <pattern>",
   );
   return 0;
 }
@@ -553,7 +553,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   try {
     const args = parseArgs(argv);
     const repo = parseRepoRef(args.repo);
-    const store = new IssueLensStore({ dbPath: args.dbPath! });
+    const store = new MergeScoutStore({ dbPath: args.dbPath! });
     const source = new GhCliIssueDataSource();
     return await commandHandlers[args.command]({ args, repo, store, source });
   } catch (error) {

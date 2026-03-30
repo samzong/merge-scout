@@ -1,4 +1,4 @@
-# Issue Lens
+# MergeScout
 
 Local-first CLI that helps open source contributors find the **best issues to work on** — ranked by value × merge probability.
 
@@ -7,9 +7,9 @@ Syncs GitHub data into SQLite, scores every open issue, and provides hybrid sema
 ## Install AI Skill
 
 ```bash
-git clone https://github.com/samzong/issue-lens.git
-cd issue-lens && pnpm install
-ln -s "$(pwd)/skill" ~/.agents/skills/issue-lens
+git clone https://github.com/samzong/merge-scout.git
+cd merge-scout && pnpm install
+ln -s "$(pwd)/skill" ~/.agents/skills/merge-scout
 ```
 
 Then tell your AI: **"Find me the best issue to contribute to in this project"** — it handles the rest.
@@ -23,9 +23,9 @@ Then tell your AI: **"Find me the best issue to contribute to in this project"**
 ## Quick Start
 
 ```bash
-pnpm run issue-lens -- init --repo <owner/repo>
-pnpm run issue-lens -- sync --repo <owner/repo> --full
-pnpm run issue-lens -- discover --repo <owner/repo> --limit 10
+pnpm run merge-scout -- init --repo <owner/repo>
+pnpm run merge-scout -- sync --repo <owner/repo> --full
+pnpm run merge-scout -- discover --repo <owner/repo> --limit 10
 ```
 
 ## How It Works
@@ -114,7 +114,7 @@ The `skill/SKILL.md` file defines how AI agents should use this tool. It include
 - Decision framework (Go / Maybe / Skip)
 - Workflow sequences for each scenario
 
-Install: `ln -s /path/to/issue-lens/skill ~/.agents/skills/issue-lens`
+Install: `ln -s /path/to/merge-scout/skill ~/.agents/skills/merge-scout`
 
 ## Tech Stack
 

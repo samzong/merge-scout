@@ -1,13 +1,13 @@
 {
-  "name": "issue-lens",
+  "name": "merge-scout",
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "issue-lens": "./bin/issue-lens.js"
+    "merge-scout": "./bin/merge-scout.js"
   },
   "type": "module",
   "scripts": {
-    "issue-lens": "tsx bin/issue-lens.ts",
+    "merge-scout": "tsx bin/merge-scout.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src/ bin/",

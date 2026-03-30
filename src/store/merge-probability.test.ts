@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { IssueLensStore } from "../store.js";
+import { MergeScoutStore } from "../store.js";
 import { computeMergeProbability } from "./merge-probability.js";
 import type { IssueRecord, MaintainerProfile } from "../types.js";
 
@@ -40,12 +40,12 @@ function makeMaintainer(overrides: Partial<MaintainerProfile> = {}): MaintainerP
 const now = new Date("2026-03-29T12:00:00Z");
 
 describe("computeMergeProbability", () => {
-  let store: IssueLensStore;
+  let store: MergeScoutStore;
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "issue-lens-test-"));
-    store = new IssueLensStore({ dbPath: join(tmpDir, "test.db") });
+    tmpDir = mkdtempSync(join(tmpdir(), "merge-scout-test-"));
+    store = new MergeScoutStore({ dbPath: join(tmpDir, "test.db") });
     await store.init();
   });
 

@@ -14,10 +14,10 @@ import type {
 
 export function defaultDbPath(repo: string): string {
   const safe = repo.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return join(homedir(), ".cache", "issue-lens", "repos", `${safe}.db`);
+  return join(homedir(), ".cache", "merge-scout", "repos", `${safe}.db`);
 }
 
-export class IssueLensStore {
+export class MergeScoutStore {
   readonly db: DatabaseSync;
   readonly dbPath: string;
   private initialized = false;

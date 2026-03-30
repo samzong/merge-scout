@@ -1,4 +1,4 @@
-# Handoff — Issue Lens
+# Handoff — MergeScout
 
 **Date**: 2026-03-30
 **Branch**: main (17 commits, pushed to origin)
@@ -12,14 +12,14 @@ AI-first CLI tool that helps open source contributors find high-value, high-merg
 
 ```bash
 # First time
-issue-lens init --repo llm-d/llm-d
-issue-lens sync --repo llm-d/llm-d --full    # ~2 min for small repo
+merge-scout init --repo llm-d/llm-d
+merge-scout sync --repo llm-d/llm-d --full    # ~2 min for small repo
 
 # Daily
-issue-lens sync --repo llm-d/llm-d           # incremental, ~30s
-issue-lens discover --repo llm-d/llm-d --limit 10 --json
-issue-lens search "your interest" --repo llm-d/llm-d --json
-issue-lens show 323 --repo llm-d/llm-d --json
+merge-scout sync --repo llm-d/llm-d           # incremental, ~30s
+merge-scout discover --repo llm-d/llm-d --limit 10 --json
+merge-scout search "your interest" --repo llm-d/llm-d --json
+merge-scout show 323 --repo llm-d/llm-d --json
 ```
 
 ## Architecture

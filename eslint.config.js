@@ -5,6 +5,6 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["node_modules/", "dist/", "*.js", "!eslint.config.js", "!bin/issue-lens.js"],
+    ignores: ["node_modules/", "dist/", "*.js", "!eslint.config.js", "!bin/merge-scout.js"],
   },
 );

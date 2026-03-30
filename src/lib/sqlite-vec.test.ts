@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { IssueLensStore } from "../store.js";
+import { MergeScoutStore } from "../store.js";
 
 describe("sqlite-vec extension", () => {
   it("loads successfully and creates vec0 table", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "vec-test-"));
-    const store = new IssueLensStore({ dbPath: join(tmp, "test.db") });
+    const store = new MergeScoutStore({ dbPath: join(tmp, "test.db") });
     await store.init();
 
     expect(store.vectorAvailable).toBe(true);
@@ -18,7 +18,7 @@ describe("sqlite-vec extension", () => {
 
   it("can insert and query vectors", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "vec-test-"));
-    const store = new IssueLensStore({ dbPath: join(tmp, "test.db") });
+    const store = new MergeScoutStore({ dbPath: join(tmp, "test.db") });
     await store.init();
     expect(store.vectorAvailable).toBe(true);
 

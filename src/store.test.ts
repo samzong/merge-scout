@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { IssueLensStore } from "./store.js";
+import { MergeScoutStore } from "./store.js";
 import type { IssueRecord } from "./types.js";
 
 function makeIssue(overrides: Partial<IssueRecord> = {}): IssueRecord {
@@ -23,12 +23,12 @@ function makeIssue(overrides: Partial<IssueRecord> = {}): IssueRecord {
   };
 }
 
-describe("IssueLensStore", () => {
-  let store: IssueLensStore;
+describe("MergeScoutStore", () => {
+  let store: MergeScoutStore;
 
   beforeEach(async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "issue-lens-test-"));
-    store = new IssueLensStore({ dbPath: join(tmpDir, "test.db") });
+    const tmpDir = mkdtempSync(join(tmpdir(), "merge-scout-test-"));
+    store = new MergeScoutStore({ dbPath: join(tmpDir, "test.db") });
     await store.init();
   });
 

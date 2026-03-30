@@ -1,5 +1,5 @@
 ---
-name: issue-lens
+name: merge-scout
 description: >
   Find the best GitHub issues to contribute to. Syncs repo data locally,
   scores issues by contributability × merge probability, and does semantic
@@ -11,11 +11,11 @@ description: >
 argument-hint: [discover|search|show|sync] [query|#issue] [--repo owner/repo]
 ---
 
-# Issue Lens
+# MergeScout
 
 Local-first Issue analysis CLI. Ranks GitHub issues by `finalScore = contributability × mergeProbability / 100` to maximize contribution ROI.
 
-Binary: `issue-lens` (run via `pnpm tsx bin/issue-lens.ts` from the issue-lens project, or `issue-lens` if globally installed).
+Binary: `merge-scout` (run via `pnpm tsx bin/merge-scout.ts` from the MergeScout project, or `merge-scout` if globally installed).
 
 ## Repo Detection
 
@@ -29,11 +29,11 @@ Binary: `issue-lens` (run via `pnpm tsx bin/issue-lens.ts` from the issue-lens p
 
 ## First-Time Setup
 
-If `issue-lens status --repo <R> --json` returns an error or `lastSyncAt: null`, the repo needs initialization:
+If `merge-scout status --repo <R> --json` returns an error or `lastSyncAt: null`, the repo needs initialization:
 
 ```bash
-issue-lens init --repo <owner/repo>
-issue-lens sync --repo <owner/repo> --full
+merge-scout init --repo <owner/repo>
+merge-scout sync --repo <owner/repo> --full
 ```
 
 Full sync fetches all issues, PRs, comments, cross-references, and computes embeddings. Takes 1-5 minutes depending on repo size. Only needed once.
@@ -45,16 +45,16 @@ Full sync fetches all issues, PRs, comments, cross-references, and computes embe
 | "what should I work on" / "今天贡献什么" / "find good issues" | → Daily Recommend                            |
 | "find issues about X" / "搜一下 X 相关的"                     | → Semantic Search                            |
 | "is #N worth working on" / "#N 值得做吗"                      | → Issue Assessment                           |
-| "who maintains this" / "谁是维护者"                           | → `issue-lens maintainers --repo <R> --json` |
-| "sync" / "更新数据"                                           | → `issue-lens sync --repo <R>`               |
+| "who maintains this" / "谁是维护者"                           | → `merge-scout maintainers --repo <R> --json` |
+| "sync" / "更新数据"                                           | → `merge-scout sync --repo <R>`               |
 
 ## Daily Recommend
 
 The core workflow. Run in sequence:
 
 ```bash
-issue-lens sync --repo <R>
-issue-lens discover --repo <R> --limit 10 --json
+merge-scout sync --repo <R>
+merge-scout discover --repo <R> --limit 10 --json
 ```
 
 Interpret the JSON results. For each recommended issue, explain:
@@ -72,7 +72,7 @@ Prioritize issues where:
 If the user has mentioned interests before (e.g., "I like networking stuff"), combine with search:
 
 ```bash
-issue-lens search "networking" --repo <R> --json
+merge-scout search "networking" --repo <R> --json
 ```
 
 Then cross-reference with discover scores to give personalized recommendations.
@@ -80,7 +80,7 @@ Then cross-reference with discover scores to give personalized recommendations.
 ## Semantic Search
 
 ```bash
-issue-lens search "<natural language query>" --repo <R> --json
+merge-scout search "<natural language query>" --repo <R> --json
 ```
 
 Uses FTS5 + vector similarity. Works with vague queries like "memory leak in scheduler" even if no issue title contains those exact words.
@@ -94,8 +94,8 @@ For each result, check the `matchSource`:
 Follow up interesting hits with:
 
 ```bash
-issue-lens show <number> --repo <R> --json
-issue-lens xref <number> --repo <R> --json
+merge-scout show <number> --repo <R> --json
+merge-scout xref <number> --repo <R> --json
 ```
 
 ## Issue Assessment
@@ -103,8 +103,8 @@ issue-lens xref <number> --repo <R> --json
 When the user asks about a specific issue:
 
 ```bash
-issue-lens show <N> --repo <R> --json
-issue-lens xref <N> --repo <R> --json
+merge-scout show <N> --repo <R> --json
+merge-scout xref <N> --repo <R> --json
 ```
 
 Give a clear verdict:
