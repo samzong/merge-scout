@@ -1,10 +1,28 @@
 {
   "name": "merge-scout",
   "version": "0.1.0",
-  "private": true,
-  "bin": {
-    "merge-scout": "./bin/merge-scout.js"
+  "description": "Find GitHub issues worth your time — ranks by contributability × merge probability",
+  "keywords": [
+    "github",
+    "issues",
+    "open-source",
+    "contribution",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samzong/merge-scout.git"
   },
+  "bin": {
+    "merge-scout": "bin/merge-scout.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "!src/**/*.test.ts",
+    "skill/"
+  ],
   "type": "module",
   "scripts": {
     "merge-scout": "tsx bin/merge-scout.ts",

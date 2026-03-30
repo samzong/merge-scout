@@ -15,7 +15,16 @@ argument-hint: [discover|search|show|sync] [query|#issue] [--repo owner/repo]
 
 Local-first Issue analysis CLI. Ranks GitHub issues by `finalScore = contributability × mergeProbability / 100` to maximize contribution ROI.
 
-Binary: `merge-scout` (run via `pnpm tsx bin/merge-scout.ts` from the MergeScout project, or `merge-scout` if globally installed).
+Requires Node.js ≥ 22 and `gh` CLI authenticated.
+
+Install from source (recommended, tracks latest changes):
+
+```bash
+git clone https://github.com/samzong/merge-scout.git
+cd merge-scout && pnpm install && pnpm link --global
+```
+
+Or via npm: `npm i -g merge-scout`.
 
 ## Repo Detection
 
@@ -40,11 +49,11 @@ Full sync fetches all issues, PRs, comments, cross-references, and computes embe
 
 ## Routing
 
-| User intent                                                   | Action                                       |
-| ------------------------------------------------------------- | -------------------------------------------- |
-| "what should I work on" / "今天贡献什么" / "find good issues" | → Daily Recommend                            |
-| "find issues about X" / "搜一下 X 相关的"                     | → Semantic Search                            |
-| "is #N worth working on" / "#N 值得做吗"                      | → Issue Assessment                           |
+| User intent                                                   | Action                                        |
+| ------------------------------------------------------------- | --------------------------------------------- |
+| "what should I work on" / "今天贡献什么" / "find good issues" | → Daily Recommend                             |
+| "find issues about X" / "搜一下 X 相关的"                     | → Semantic Search                             |
+| "is #N worth working on" / "#N 值得做吗"                      | → Issue Assessment                            |
 | "who maintains this" / "谁是维护者"                           | → `merge-scout maintainers --repo <R> --json` |
 | "sync" / "更新数据"                                           | → `merge-scout sync --repo <R>`               |
 

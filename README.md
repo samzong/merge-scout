@@ -17,11 +17,21 @@ What MergeScout gives you:
 
 ```bash
 git clone https://github.com/samzong/merge-scout.git
-cd merge-scout && pnpm install
+cd merge-scout && pnpm install && pnpm link --global
 ln -s "$(pwd)/skill" ~/.agents/skills/merge-scout
 ```
 
-Then tell your AI: **"Find me the best issue to contribute to in this project"**.
+Then tell your agent: **"Find me the best issue to contribute to in this project"**.
+
+<details>
+<summary>Or install via npm</summary>
+
+```bash
+npm i -g merge-scout
+ln -s "$(npm root -g)/merge-scout/skill" ~/.agents/skills/merge-scout
+```
+
+</details>
 
 ## Prerequisites
 
