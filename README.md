@@ -18,7 +18,7 @@ What MergeScout gives you:
 ```bash
 git clone https://github.com/samzong/merge-scout.git
 cd merge-scout && pnpm install && pnpm link --global
-ln -s "$(pwd)/skill" ~/.agents/skills/merge-scout
+npx --yes skills add . --skill merge-scout
 ```
 
 Then tell your agent: **"Find me the best issue to contribute to in this project"**.
@@ -28,7 +28,7 @@ Then tell your agent: **"Find me the best issue to contribute to in this project
 
 ```bash
 npm i -g merge-scout
-ln -s "$(npm root -g)/merge-scout/skill" ~/.agents/skills/merge-scout
+npx --yes skills add "$(npm root -g)/merge-scout" --skill merge-scout
 ```
 
 </details>
@@ -126,14 +126,14 @@ All commands support `--json` for structured output.
 
 ## AI Agent Skill
 
-The `skill/SKILL.md` file defines how AI agents should use this tool. It includes:
+The `skills/merge-scout/SKILL.md` file defines how AI agents should use this tool. It includes:
 
 - Intent routing (daily recommend, search, assessment, maintainers)
 - Score interpretation tables
 - Decision framework (Go / Maybe / Skip)
 - Workflow sequences for each scenario
 
-Install: `ln -s /path/to/merge-scout/skill ~/.agents/skills/merge-scout`
+Install: `npx --yes skills add samzong/merge-scout --skill merge-scout`
 
 ## Tech Stack
 

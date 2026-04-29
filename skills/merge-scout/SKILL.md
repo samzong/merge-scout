@@ -8,7 +8,7 @@ description: >
   "who maintains this project", "show me easy issues", contribution
   discovery, issue analysis, merge probability assessment.
   Do not use for: PR review, code review, issue creation, git operations.
-argument-hint: [discover|search|show|sync] [query|#issue] [--repo owner/repo]
+argument-hint: "[discover|search|show|sync] [query|#issue] [--repo owner/repo]"
 ---
 
 # MergeScout

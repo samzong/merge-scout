@@ -21,7 +21,7 @@
     "bin/",
     "src/",
     "!src/**/*.test.ts",
-    "skill/"
+    "skills/"
   ],
   "type": "module",
   "scripts": {

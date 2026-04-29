@@ -53,5 +53,5 @@ MergeScout — local-first CLI tool that helps open source contributors find hig
 ## Design References
 
 - @DESIGN.md — full architecture, scoring formulas, data model, competitive analysis
-- @skill/SKILL.md — AI agent skill definition with routing, workflows, score interpretation
+- @skills/merge-scout/SKILL.md — AI agent skill definition with routing, workflows, score interpretation
 - @HANDOFF.md — current status and next steps

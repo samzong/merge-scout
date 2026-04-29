@@ -255,7 +255,7 @@ Note: directory-sourced topics may have `openIssueCount: 0` since they are disco
 | `src/store/priority.ts`        | `computeModuleAffinity` → `computeTopicAffinity`; `buildDiscoverResults` reads interests instead of modules |
 | `src/cli.ts`                   | `handleConfig` → subcommands (topics/select/deselect/interests); `handleSync` calls `discoverTopics` at end |
 | `src/github.ts`                | Add `fetchDirectoryTree()` helper                                                                           |
-| `skill/SKILL.md`               | Update config workflow                                                                                      |
+| `skills/merge-scout/SKILL.md`  | Update config workflow                                                                                      |
 | Tests                          | Update `priority.test.ts`; add `topic-discovery.test.ts`                                                    |
 
 ## Not Doing
